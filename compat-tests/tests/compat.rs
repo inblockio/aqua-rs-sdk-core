@@ -60,11 +60,10 @@ fn template_hash_constants_match() {
                 <full::schema::templates::$name as F>::TEMPLATE_LINK,
                 concat!("TEMPLATE_LINK drift for ", stringify!($name))
             );
-            assert_eq!(
-                <core_::schema::templates::$name as C>::TEMPLATE_JSON,
-                <full::schema::templates::$name as F>::TEMPLATE_JSON,
-                concat!("TEMPLATE_JSON byte drift for ", stringify!($name))
-            );
+            // TEMPLATE_JSON is not compared here: the trait defaults it to
+            // an empty string and not every impl overrides it. Byte identity
+            // of the template files is asserted directly in
+            // template_files_byte_identical below.
         };
     }
 
@@ -493,4 +492,112 @@ async fn tampered_tree_fails_in_both() {
         !full_result.is_verified(),
         "full SDK must reject the tampered tree"
     );
+}
+
+// ── H5 fail-closed: custom WASM-carrying templates are rejected ─────────
+
+#[tokio::test(flavor = "multi_thread")]
+async fn custom_wasm_template_rejected_fail_closed() {
+    use core_::schema::template::BuiltInTemplate;
+    use core_::verification::Linkable;
+
+    // Build a CUSTOM template (distinct nonce => distinct type identity)
+    // that carries identity_base's real WASM verification section.
+    let mut tmpl_json: serde_json::Value = serde_json::from_str(
+        <core_::schema::templates::AuditUserTurnMarker as BuiltInTemplate>::TEMPLATE_JSON,
+    )
+    .unwrap();
+    let identity_base: serde_json::Value = serde_json::from_str(include_str!(
+        "../../src/schema/templates/identity_base.json"
+    ))
+    .unwrap();
+    tmpl_json["verification"] = identity_base["verification"].clone();
+    tmpl_json["nonce"] = serde_json::json!("0x000102030405060708090a0b0c0d0e0f");
+    // A custom root template: no derivation baggage from the audit family.
+    tmpl_json.as_object_mut().unwrap().remove("derives_from");
+    tmpl_json.as_object_mut().unwrap().remove("ancestry");
+    let template: core_::schema::Template = serde_json::from_value(tmpl_json).unwrap();
+    let template_link = template
+        .calculate_link(core_::primitives::HashType::Sha3_256)
+        .unwrap();
+
+    // Object of that custom type, template revision embedded in the tree
+    // (the portable-template pattern), keyed by the full multihash link.
+    let aq = core_::Aquafier::new();
+    let mut tree = aq
+        .create_object(
+            template_link.clone(),
+            None,
+            serde_json::json!({
+                "signer_did": "did:key:z6MkCustomWasmTest",
+                "session_id": "s",
+                "turn_index": 0,
+                "opens_at": 1
+            }),
+            None,
+        )
+        .unwrap();
+    tree.revisions.insert(
+        template_link.clone(),
+        core_::schema::AnyRevision::Template(template),
+    );
+
+    let result = aq
+        .verify_aqua_tree(core_::schema::AquaTreeWrapper::new(tree, None, None), vec![])
+        .await
+        .unwrap();
+    assert!(
+        !result.is_verified(),
+        "core must fail closed on a non-built-in WASM-carrying template"
+    );
+    assert!(
+        result
+            .errors()
+            .iter()
+            .any(|e| e.code == "COMPUTE_UNSUPPORTED"),
+        "expected COMPUTE_UNSUPPORTED, got: {:?}",
+        result.outcome
+    );
+}
+
+// ── H2: template JSON files are byte-identical across the two repos ─────
+
+#[test]
+fn template_files_byte_identical() {
+    macro_rules! file_pair {
+        ($file:literal) => {
+            assert_eq!(
+                include_str!(concat!("../../src/schema/templates/", $file)).as_bytes(),
+                include_str!(concat!(
+                    "../../../aqua-rs-sdk/src/schema/templates/",
+                    $file
+                ))
+                .as_bytes(),
+                concat!("template file byte drift: ", $file)
+            );
+        };
+    }
+    file_pair!("template_meta.json");
+    file_pair!("anchor_template.json");
+    file_pair!("signature_base.json");
+    file_pair!("signature_ed25519.json");
+    file_pair!("signature_eip191.json");
+    file_pair!("signature_p256.json");
+    file_pair!("signature_webauthn.json");
+    file_pair!("identity_base.json");
+    file_pair!("file.json");
+    file_pair!("timestamp_base.json");
+    file_pair!("timestamp_evm.json");
+    file_pair!("timestamp_tsa.json");
+    file_pair!("audit_artifact.json");
+    file_pair!("audit_user_turn_marker.json");
+    file_pair!("audit_user_prompt.json");
+    file_pair!("audit_agent_thinking.json");
+    file_pair!("audit_agent_tool_call.json");
+    file_pair!("audit_gusto_api_response.json");
+    file_pair!("audit_tool_result.json");
+    file_pair!("audit_hitl_approval.json");
+    file_pair!("audit_agent_response.json");
+    file_pair!("audit_round_anchor.json");
+    file_pair!("audit_session_close.json");
 }
