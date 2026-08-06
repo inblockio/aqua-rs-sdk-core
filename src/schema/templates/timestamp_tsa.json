@@ -1,0 +1,96 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0xb2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7",
+  "local_timestamp": 1762266014,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "type": {
+        "const": "timestamp",
+        "type": "string",
+        "maxLength": 140
+      },
+      "merkle_root": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "timestamp": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "network": {
+        "const": "tsa",
+        "type": "string",
+        "maxLength": 140
+      },
+      "transaction_hash": {
+        "type": "string",
+        "maxLength": 32768
+      },
+      "tsa_provider": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "merkle_proof": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "maxItems": 64
+      },
+      "batch_tree_size": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1048576
+      },
+      "batch_leaf_index": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1048575
+      },
+      "shielding_nonce": {
+        "type": "string",
+        "pattern": "^0x[0-9a-fA-F]{64}$"
+      }
+    },
+    "required": [
+      "type",
+      "merkle_root",
+      "timestamp",
+      "network",
+      "transaction_hash",
+      "tsa_provider",
+      "merkle_proof",
+      "batch_tree_size",
+      "batch_leaf_index",
+      "shielding_nonce"
+    ],
+    "additionalProperties": false
+  },
+  "verification": {
+    "computations": [
+      {
+        "wasm": "0x0061736d0100000001140360047f7f7f7f017f60017f017f60027f7f017f022e0204617175610f6374785f7061796c6f61645f737472000004617175610e7765625f7665726966795f7473610000030302010205030100010608017f014180c0020b071b03066d656d6f7279020005616c6c6f6300020676657269667900030a6c021101017f23002101230020006a240020010b5801027f41808a02411041800841808002100021022002410048044041030f0b41908a02410b41808802418002100021032003410048044041040f0b4180082002418088022003100121032003410048044041020f0b20030b0b2a020041808a020b107472616e73616374696f6e5f686173680041908a020b0b6d65726b6c655f726f6f74006c046e616d65012202000f6374785f7061796c6f61645f737472010e7765625f7665726966795f7473610238020202000473697a650103707472030400076374785f70747201076374785f6c656e020c726573706f6e73655f6c656e03066d725f6c656e070701000462756d70",
+        "wasm_hash": "0x978093d010ab06f342de1bb88c174666397b2ab6efd7df5762d32b981a5490b4"
+      }
+    ],
+    "host_dependencies": [
+      "web"
+    ],
+    "states": [
+      "qualified_verified",
+      "verified",
+      "unverified",
+      "error_response",
+      "error_merkle_root"
+    ]
+  },
+  "derives_from": "0x1620b6eadc83070402c73a6af82d56664ca890f2db6539530ea5ac12d5e2798dfdd6",
+  "ancestry": [
+    "0x1620b6eadc83070402c73a6af82d56664ca890f2db6539530ea5ac12d5e2798dfdd6"
+  ]
+}

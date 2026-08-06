@@ -1,0 +1,48 @@
+{
+  "revisions": {
+    "0x16200ca0d8732000a8f6d68804281832b7c1479ec9d7e7cbb4eb45ff451090803609": {
+      "previous_revision": "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b",
+      "revision_type": "0x1620baf1d5d47eef50dcde3931956879bb30c5580064a92ce43ed4c6bd8b878b659a",
+      "nonce": "0x43b3b02ccc27e2d194d88e61ce008f2e",
+      "local_timestamp": 1783616148,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "signer": "did:key:z6MkneMkZqwqRiU5mJzSG3kDwzt9P8C59N4NGTfBLfSGE7c7",
+      "signature": {
+        "signature_type": "ed25519",
+        "signature": "0xe52bceee7bdbc97d3e3a7818d6a047dab21831261bedc9794dc0cab6e7bab2db0138421cff61f177c742f8f484172be02d210a17c48b80a18e1afba2c170c20d",
+        "signature_public_identifier": "0x79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664"
+      }
+    },
+    "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0x1a5f49342762a8282bc53f736b96d580",
+      "local_timestamp": 1783616147,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x162000f3abb3d74fc9dfc2b961cea906b3211716188f4de6f588180fdfcbbfa3fe53"
+      ]
+    },
+    "0x1620f7912b27263b2352d29ac5e0533a444799d45e835683104be8a3f3bb36d5ac28": {
+      "previous_revision": "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b",
+      "revision_type": "0x162000f3abb3d74fc9dfc2b961cea906b3211716188f4de6f588180fdfcbbfa3fe53",
+      "nonce": "0x4313fd67ac7d5b6bbd62abe5e8ec226e",
+      "local_timestamp": 1783616148,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "type": "file",
+        "hash": "0xd87ca20fb47b105c59e46a63a86193a546b980991c86115a08da820304450b9d",
+        "hash_type": "FIPS_202-SHA3-256",
+        "descriptor": "",
+        "size": 12,
+        "content_type": "text/plain"
+      }
+    }
+  },
+  "file_index": {
+    "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b": "anchor_0x1620ce",
+    "0x1620f7912b27263b2352d29ac5e0533a444799d45e835683104be8a3f3bb36d5ac28": "test.txt"
+  }
+}

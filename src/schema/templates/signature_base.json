@@ -1,0 +1,50 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0xe1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6",
+  "local_timestamp": 1762266001,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "signer": {
+        "type": "string",
+        "pattern": "^did:(pkh|key):",
+        "maxLength": 256
+      },
+      "signature": {
+        "type": "object",
+        "properties": {
+          "signature_type": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "signature": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]+$"
+          },
+          "signature_public_identifier": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "signature_type",
+          "signature",
+          "signature_public_identifier"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "signer",
+      "signature"
+    ],
+    "additionalProperties": false
+  },
+  "derives_from": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "ancestry": [
+    "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155"
+  ]
+}

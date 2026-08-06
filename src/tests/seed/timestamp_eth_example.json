@@ -1,0 +1,76 @@
+{
+  "revisions": {
+    "0x162067958d0adfbfe1e5169648516fd8cde1fea2e553edc75bcb1c9c71ca8d99cb05": {
+      "previous_revision": "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b",
+      "revision_type": "0x1620d16cba5ad81745c8d41c0423fb55437af60ecc4db491c943ea261f418ec0a530",
+      "nonce": "0x9650a2b78cf6a863209486173c212c86",
+      "local_timestamp": 1783616148,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "tree",
+      "payloads": {
+        "type": "timestamp",
+        "merkle_root": "0x16209d603b9f2b360a44763b3b8252fc8667c5ba5c8966a53126bfd61878c19bb1ce",
+        "timestamp": 1762841641,
+        "network": "sepolia",
+        "smart_contract_address": "0x45f59310ADD88E6d23ca58A0Fa7A55BEE6d2a611",
+        "transaction_hash": "0xcbfe51aa81859f4e3b5428035bd9e6ab2999785bb7baf82ec167cffda13aab4a",
+        "sender_account_address": "0x3da329055da0Cb73DECecFb732AE309DC14a6595",
+        "merkle_proof": [],
+        "batch_tree_size": 1,
+        "batch_leaf_index": 0,
+        "shielding_nonce": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      },
+      "leaves": [
+        "0x1d3cbe4bffc835787895fd94b17c9b0304805ea10a397fb6d622c68566457559",
+        "0xf8afcff88a944ce71a7806ed1bef0c5f6bb83b0c3e47b17cd48f91fe981eb825",
+        "0xf98c569e3598b53d0f63f44f76ff507c6a00fad791f9af4964fe5b36a083bc72",
+        "0x7ec41805eb5bf6f5e21be2ed7a0a4ee6df2f63e2ff48f1c8da576811667a0d60",
+        "0x4b5bc2e3c5df77a03693603ad7079c46f1df5e5995ba041dab8d42c1a5d929fe",
+        "0x29ff9c887a21dbb0cf400ae04a35756787c810290bc71538387df9a174f744ee",
+        "0x0a5b39186837ddfc9fc30264508fb883b68fdeaddf8e16db3157cdaae5d10458",
+        "0xf6a7f3fc7f4a660c4f4b2b4248482db391a7d0939241c64bc06f362c25142726",
+        "0xd01afd8bf741cce1ad6c39f1b402fa553beadb9376337ecf779159a7b3cb8ebd",
+        "0x691a7b74c15fbe45d476d39e87d1949e35975a4a53121384e7a385f51076ae3d",
+        "0xef4ae63ecba5929558d693059be2f4fa8dc5af3c9cce494edade372241d7c103",
+        "0x5d4def7d06ebd591206ff7ce738dcefda2d132291416a93722b91acd7b088c3d",
+        "0x85cee03f5ebc3205088849e1a8f31fbb3e3f81865b27feea02663d316cfcb6d2",
+        "0x54fa1edca52bac3ead92bcda20b493a25ecbe7b5255b6c202925d0fc1b5ecdbc",
+        "0x17f70fa69f4fec20908d51227647f8433557e02b57d7189b3dcc69c5f1c9a85a",
+        "0xc65353853c4f0c0afd62d82aade4bc7fc1c82c3eb6b417db93d8cce85483b4b3",
+        "0xe4420c0991fe2e2d80245c737c3f8ddf5739a6980855a8e24527ef174b1c96dc",
+        "0x3c850e4d5103f68285b26533608680d2f5c65a1f7422e38e463034efab0d724f",
+        "0x55e37c7f8939602672c6700b80418905a570d5ad10632e5e03e4ac7558b57846"
+      ]
+    },
+    "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0x1a5f49342762a8282bc53f736b96d580",
+      "local_timestamp": 1783616147,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x162000f3abb3d74fc9dfc2b961cea906b3211716188f4de6f588180fdfcbbfa3fe53"
+      ]
+    },
+    "0x1620f7912b27263b2352d29ac5e0533a444799d45e835683104be8a3f3bb36d5ac28": {
+      "previous_revision": "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b",
+      "revision_type": "0x162000f3abb3d74fc9dfc2b961cea906b3211716188f4de6f588180fdfcbbfa3fe53",
+      "nonce": "0x4313fd67ac7d5b6bbd62abe5e8ec226e",
+      "local_timestamp": 1783616148,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "type": "file",
+        "hash": "0xd87ca20fb47b105c59e46a63a86193a546b980991c86115a08da820304450b9d",
+        "hash_type": "FIPS_202-SHA3-256",
+        "descriptor": "",
+        "size": 12,
+        "content_type": "text/plain"
+      }
+    }
+  },
+  "file_index": {
+    "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b": "anchor_0x1620ce",
+    "0x1620f7912b27263b2352d29ac5e0533a444799d45e835683104be8a3f3bb36d5ac28": "test.txt"
+  }
+}

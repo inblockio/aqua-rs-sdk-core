@@ -1,0 +1,68 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0x2ba6a8b9b987cf8c3567f72871812ae9",
+  "local_timestamp": 1762266013,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "type": {
+        "const": "file",
+        "type": "string",
+        "maxLength": 140
+      },
+      "hash": {
+        "type": "string",
+        "pattern": "^0x[0-9a-f]{64,128}$"
+      },
+      "hash_type": {
+        "description": "Hash function identifier: either FIPS_202-SHA3-256 or a custom hashing type.",
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "FIPS_202-SHA3-256"
+          },
+          {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        ]
+      },
+      "descriptor": {
+        "type": "string",
+        "maxLength": 140
+      },
+      "size": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "content_type": {
+        "type": "string",
+        "maxLength": 140
+      }
+    },
+    "required": [
+      "type",
+      "hash",
+      "hash_type",
+      "descriptor",
+      "size",
+      "content_type"
+    ],
+    "additionalProperties": false
+  },
+  "bounds": {
+    "max_chain_depth": 64,
+    "structural_links": {
+      "required": 0,
+      "max": 0
+    },
+    "max_signature_branches": 4,
+    "max_timestamp_branches": 1,
+    "max_anchor_branches": 4,
+    "max_total_revisions": 1024
+  }
+}

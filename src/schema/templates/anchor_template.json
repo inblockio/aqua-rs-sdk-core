@@ -1,0 +1,30 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0xd1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c7",
+  "local_timestamp": 1762266002,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "link_type": {
+        "type": "string",
+        "maxLength": 64
+      },
+      "link_verification_hashes": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "minItems": 1
+      }
+    },
+    "required": [
+      "link_type",
+      "link_verification_hashes"
+    ],
+    "additionalProperties": false
+  }
+}

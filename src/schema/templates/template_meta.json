@@ -1,0 +1,71 @@
+{
+  "revision_type": "0x162087ea911a93f2698563b68b860f33fd7a568ca2391d4a227b532812d496039e74",
+  "nonce": "0xf0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5",
+  "local_timestamp": 1762266000,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "schema": {
+        "type": "object"
+      },
+      "verification": {
+        "type": "object",
+        "properties": {
+          "computations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "wasm": {
+                  "type": "string",
+                  "pattern": "^0x"
+                },
+                "wasm_hash": {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "wasm",
+                "wasm_hash"
+              ]
+            }
+          },
+          "host_dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          "states": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        }
+      },
+      "derives_from": {
+        "type": "string",
+        "pattern": "^0x[0-9a-f]{64}$"
+      },
+      "ancestry": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "maxItems": 3
+      }
+    },
+    "required": [
+      "schema"
+    ],
+    "additionalProperties": false
+  }
+}

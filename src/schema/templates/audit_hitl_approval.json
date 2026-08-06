@@ -1,0 +1,57 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0x00000000000000000000000000000000",
+  "local_timestamp": 1747526400,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "signer_did": {
+        "type": "string",
+        "pattern": "^did:(pkh|key):",
+        "maxLength": 256,
+        "description": "User-app-session DID — the human authorizing or rejecting the action"
+      },
+      "turn_id": {
+        "type": "string",
+        "pattern": "^0x(16|1e)20[0-9a-f]{64}$"
+      },
+      "decision": {
+        "type": "string",
+        "enum": [
+          "approved",
+          "rejected"
+        ]
+      },
+      "prompt_shown": {
+        "type": "string",
+        "maxLength": 8192,
+        "description": "The prompt text shown to the user when requesting approval"
+      },
+      "created_at": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "rationale": {
+        "type": "string",
+        "maxLength": 8192,
+        "description": "Optional reasoning the user supplied with the decision"
+      }
+    },
+    "required": [
+      "signer_did",
+      "turn_id",
+      "decision",
+      "prompt_shown",
+      "created_at"
+    ],
+    "additionalProperties": false
+  },
+  "derives_from": "0x1620111d65c253f72bc4e2b69ede969b26785dc5e54bd6b2906d79887232be242665",
+  "ancestry": [
+    "0x1620812b61a5906095bc375273813918e994555e1f386595c0187438c00435b107b4",
+    "0x1620111d65c253f72bc4e2b69ede969b26785dc5e54bd6b2906d79887232be242665"
+  ]
+}

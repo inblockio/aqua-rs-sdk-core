@@ -1,0 +1,50 @@
+[workspace]
+members = [".", "compat-tests"]
+
+[package]
+name = "aqua-rs-sdk-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Minimal, WASM-free core of the Aqua protocol SDK: anchor, object, and template primitives with base signatures and the agentic audit-trail templates."
+readme = "README.md"
+keywords = ["aqua", "aqua-protocol", "audit", "provenance"]
+categories = ["development-tools", "cryptography"]
+repository = "https://github.com/inblockio/aqua-rs-sdk-core"
+exclude = ["target", "*.lock", ".vscode", ".idea", "compat-tests"]
+
+[lib]
+crate-type = ["rlib"]
+
+[[bin]]
+name = "verify-templates"
+path = "src/bin/verify_templates.rs"
+required-features = ["native"]
+
+[features]
+default = ["native"]
+# Platform-specific: enables the EIP-191 secp256k1 signer.
+native = []
+
+[dependencies]
+jsonschema = { version = "0.33", default-features = false }
+serde_json = { version = "1.0.145", features = ["preserve_order"] }
+serde = { version = "1.0.227", features = ["derive"] }
+async-trait = "0.1"
+thiserror = "2.0.16"
+jsonpointer_flatten = "0.1.3"
+serde_with = "3.14.1"
+hex = "0.4.3"
+sha3 = "0.10.8"
+blake3 = "1"
+rand = "0.8"
+sha2 = { version = "0.10", features = ["oid"] }
+ed25519-dalek = { version = "2.2.0", features = ["rand_core"] }
+k256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+base64 = "0.21"
+multibase = "0.9"
+hkdf = "0.12"
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["sync", "macros", "rt", "rt-multi-thread", "time"] }

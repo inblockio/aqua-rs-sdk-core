@@ -1,0 +1,103 @@
+{
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "nonce": "0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+  "local_timestamp": 1762266014,
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "method": "scalar",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "type": {
+        "const": "timestamp",
+        "type": "string",
+        "maxLength": 140
+      },
+      "merkle_root": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "timestamp": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "network": {
+        "type": "string",
+        "maxLength": 140
+      },
+      "smart_contract_address": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "transaction_hash": {
+        "type": "string",
+        "maxLength": 32768
+      },
+      "sender_account_address": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "tsa_provider": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "merkle_proof": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "maxItems": 64
+      },
+      "batch_tree_size": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1048576
+      },
+      "batch_leaf_index": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1048575
+      },
+      "shielding_nonce": {
+        "type": "string",
+        "pattern": "^0x[0-9a-fA-F]{64}$"
+      }
+    },
+    "required": [
+      "type",
+      "merkle_root",
+      "timestamp",
+      "network",
+      "transaction_hash",
+      "sender_account_address",
+      "merkle_proof",
+      "batch_tree_size",
+      "batch_leaf_index",
+      "shielding_nonce"
+    ],
+    "additionalProperties": false
+  },
+  "verification": {
+    "computations": [
+      {
+        "wasm": "0x0061736d01000000011e0460047f7f7f7f017f60067f7f7f7f7f7f017f60017f017f60027f7f017f02340204617175610f6374785f7061796c6f61645f7374720000046171756114626c6f636b636861696e5f7665726966795f74780001030302020305030100010607017f014180200b071b03066d656d6f7279020005616c6c6f6300020676657269667900030a77021101017f23002101230020006a240020010b6301037f4180144107418008418002100021022002410048044041020f0b418714411041800a418008100021032003410048044041030f0b419714410b418012418002100021042004410048044041040f0b418008200241800a2003418012200410010b0b3503004180140b076e6574776f726b004187140b107472616e73616374696f6e5f68617368004197140b0b6d65726b6c655f726f6f740075046e616d65012802000f6374785f7061796c6f61645f7374720114626c6f636b636861696e5f7665726966795f7478023b020202000473697a650103707472030500076374785f70747201076374785f6c656e02076e65745f6c656e030674785f6c656e04066d725f6c656e070701000462756d70",
+        "wasm_hash": "0x6e19040df3939c293ddadacf53312b834dcb596232f51f9c0cb9ee9e36bfddc4"
+      }
+    ],
+    "host_dependencies": [
+      "blockchain"
+    ],
+    "states": [
+      "verified",
+      "unverified",
+      "error_network",
+      "error_tx_hash",
+      "error_merkle_root"
+    ]
+  },
+  "derives_from": "0x1620b6eadc83070402c73a6af82d56664ca890f2db6539530ea5ac12d5e2798dfdd6",
+  "ancestry": [
+    "0x1620b6eadc83070402c73a6af82d56664ca890f2db6539530ea5ac12d5e2798dfdd6"
+  ]
+}

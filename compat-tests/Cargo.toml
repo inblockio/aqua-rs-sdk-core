@@ -1,0 +1,15 @@
+[package]
+name = "compat-tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Integration tests proving aqua-rs-sdk-core is a compatible subset of aqua-rs-sdk. Not published."
+
+[dependencies]
+
+[dev-dependencies]
+aqua-rs-sdk-core = { path = "..", features = ["native"] }
+aqua-rs-sdk = { path = "../../aqua-rs-sdk", features = ["native"] }
+serde_json = { version = "1.0.145", features = ["preserve_order"] }
+tokio = { version = "1.0", features = ["macros", "rt"] }
+hex = "0.4.3"

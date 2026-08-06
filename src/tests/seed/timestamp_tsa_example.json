@@ -1,0 +1,74 @@
+{
+  "revisions": {
+    "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b": {
+      "revision_type": "0x1620479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899",
+      "nonce": "0x1a5f49342762a8282bc53f736b96d580",
+      "local_timestamp": 1783616147,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "structural_links": [
+        "0x162000f3abb3d74fc9dfc2b961cea906b3211716188f4de6f588180fdfcbbfa3fe53"
+      ]
+    },
+    "0x1620f7912b27263b2352d29ac5e0533a444799d45e835683104be8a3f3bb36d5ac28": {
+      "previous_revision": "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b",
+      "revision_type": "0x162000f3abb3d74fc9dfc2b961cea906b3211716188f4de6f588180fdfcbbfa3fe53",
+      "nonce": "0x4313fd67ac7d5b6bbd62abe5e8ec226e",
+      "local_timestamp": 1783616148,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "scalar",
+      "payloads": {
+        "type": "file",
+        "hash": "0xd87ca20fb47b105c59e46a63a86193a546b980991c86115a08da820304450b9d",
+        "hash_type": "FIPS_202-SHA3-256",
+        "descriptor": "",
+        "size": 12,
+        "content_type": "text/plain"
+      }
+    },
+    "0x1620fc106e7390ee8f88386f35629cfaa7931f890a3dc2b07c1c31be7a6318aa4a62": {
+      "previous_revision": "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b",
+      "revision_type": "0x162065fbe67e03cd437326c8491155b6fb2949eb528a249452eafff0cc6738d501a8",
+      "nonce": "0x9e727cf1837cc4c3ae2c0224023f3dee",
+      "local_timestamp": 1783616148,
+      "version": "https://aqua-protocol.org/docs/v4/schema",
+      "method": "tree",
+      "payloads": {
+        "type": "timestamp",
+        "merkle_root": "0x16209d603b9f2b360a44763b3b8252fc8667c5ba5c8966a53126bfd61878c19bb1ce",
+        "timestamp": 1763021245,
+        "network": "tsa",
+        "transaction_hash": "TSA_CERTIFICATE_PLACEHOLDER",
+        "tsa_provider": "DigiCert",
+        "merkle_proof": [],
+        "batch_tree_size": 1,
+        "batch_leaf_index": 0,
+        "shielding_nonce": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      },
+      "leaves": [
+        "0x92c7ef17748912846da7e74889a47ae344006b2efdfb77616a826563c28abff4",
+        "0x9ac2e6ff8180a11192d44930822afbb0330e15c66cf8a9d617d6ac2d4a407718",
+        "0xbdd7a32f73521d4f3aeb0fc022bbb20665b6df52addc52f8639755e4b9ba0b95",
+        "0xb572b6b57a1ba76451c92ec5237414058bd297b751fdbe28c4e9edfe95ce90b8",
+        "0xb4b12704526efc5322d1da7997aa2de2e57df4518a3da5f413747810aca96129",
+        "0x1695fba93eedcccf31b2aec51b5c84275659662248596f0da309373df1f7ea7e",
+        "0x787110d5148b81298f5187bdcc2dc5d0633b83a80bbae59847df867b006683dc",
+        "0x95f00ac60b95ade695b2a4c34b1c9adee4c9a3ec4de64904e223b1fd310f91a1",
+        "0xee95c9d9361f4540b1570dc00c664f4565f53b5d3feaf3284b03d36ca9094f1c",
+        "0xcc76058e9e19cfa47fbb1a1318ab0c09b7fd3473062cd711ca55c53ce32e650d",
+        "0x1538767298fc6745a8cd5fec94d671f6a071b34ac5af6459234fb317dd81dcac",
+        "0xce4c8013284bd174a6073b95261bfb80527561d00864f33a748501dbcf710727",
+        "0x6aa5df0ed9df5eedc10d90b1e2c8398df4f8d830048b32e4bbc4fd6462cd8ac1",
+        "0xa850b69cebf19ce36df4cfeb74b92fa0e3b094b1c2d439640be6327a713d7c3b",
+        "0x82ca136e9b5d8ba14088a9fa79029fdab97deed3390f1a5fcc5cea7d351a080f",
+        "0xd4d01dcb00936bd012c529b247023dd325ca055991bc644f3ec9fbded484b25e",
+        "0x9e30f441fff85d2b6c503e0b7f685401d7e5f111d0c26417d02b29c2b7920fb5",
+        "0xb843eac09630c7a9edecaebccd24e679246767fd81ddfb1aabee7dac4304bd76"
+      ]
+    }
+  },
+  "file_index": {
+    "0x1620ce6f69b28e6dd3a1b02f107bc08a2316901dbd3c7d41d619bd7bb0bd49b7ce0b": "anchor_0x1620ce",
+    "0x1620f7912b27263b2352d29ac5e0533a444799d45e835683104be8a3f3bb36d5ac28": "test.txt"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "local_timestamp": 0,
+  "method": "scalar",
+  "nonce": "0x00000000000000000000000000000004",
+  "revision_type": "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "WebAuthn/Passkey P-256 signature",
+    "properties": {
+      "authenticator_data": {
+        "description": "authenticatorData bytes from WebAuthn assertion, hex-encoded",
+        "pattern": "^0x[0-9a-fA-F]+$",
+        "type": "string"
+      },
+      "client_data_json": {
+        "description": "clientDataJSON bytes from WebAuthn assertion, hex-encoded",
+        "pattern": "^0x[0-9a-fA-F]+$",
+        "type": "string"
+      },
+      "signature": {
+        "description": "64-byte ECDSA signature (r || s), big-endian, hex-encoded",
+        "pattern": "^0x[0-9a-fA-F]{128}$",
+        "type": "string"
+      },
+      "signature_public_identifier": {
+        "description": "33-byte compressed SEC1 credential public key, hex-encoded",
+        "pattern": "^0x[0-9a-fA-F]{66}$",
+        "type": "string"
+      },
+      "signature_type": {
+        "const": "webauthn:p256"
+      }
+    },
+    "required": [
+      "signature_type",
+      "signature",
+      "signature_public_identifier",
+      "authenticator_data",
+      "client_data_json"
+    ],
+    "type": "object"
+  },
+  "version": "https://aqua-protocol.org/docs/v4/schema",
+  "bounds": {
+    "max_chain_depth": 3,
+    "structural_links": {
+      "required": 0,
+      "max": 0
+    },
+    "max_signature_branches": 0,
+    "max_timestamp_branches": 1,
+    "max_anchor_branches": 1,
+    "max_total_revisions": 3
+  },
+  "derives_from": "0x1620bdc93b4152c0163e40d3bf8cb956e235f0150731c1e8c8b50d9c3b7abe50e4a7",
+  "ancestry": [
+    "0x1620bdc93b4152c0163e40d3bf8cb956e235f0150731c1e8c8b50d9c3b7abe50e4a7"
+  ]
+}
