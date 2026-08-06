@@ -308,28 +308,4 @@ impl ComputeModule {
         validate_compute_module(0, &module)?;
         Ok(module)
     }
-
-    /// Compile WAT text and embed it as a self-contained module. Uses the same
-    /// `wat::parse_str` path as the SDK's reproducible builder crate
-    /// (`aqua-example-templates/payments/build/wat-build`). Bytes produced
-    /// here match that builder because this crate pins the same `wat`
-    /// version (`=1.250.0`) as the builder's committed lockfile, and the
-    /// `from_wat_reproduces_shipped_module` test acts as a canary against
-    /// toolchain drift.
-    ///
-    /// Requires the `authoring` feature. Like [`Self::from_wasm_with_source`],
-    /// this only checks internal consistency of the resulting module; it does
-    /// not, by itself, constitute a reproducible-build attestation.
-    #[cfg(feature = "authoring")]
-    pub fn from_wat(
-        wat_source: &str,
-        description: Option<String>,
-        build: Option<ComputeBuild>,
-    ) -> Result<Self, ComputeError> {
-        let wasm_bytes =
-            wat::parse_str(wat_source).map_err(|e| ComputeError::WatCompileFailed {
-                error: e.to_string(),
-            })?;
-        Self::from_wasm_with_source(&wasm_bytes, wat_source, "wat", description, build)
-    }
 }

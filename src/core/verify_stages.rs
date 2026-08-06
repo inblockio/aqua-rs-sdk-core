@@ -9,7 +9,7 @@ use crate::{
     schema::{tree::Tree, AnyRevision, FileData, Template},
 };
 
-use super::compute::{TemplateVerification, VerificationOutput};
+use super::compute::TemplateVerification;
 use super::object::verify_object;
 use super::signature::verify_signature;
 

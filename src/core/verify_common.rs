@@ -4,7 +4,6 @@
 //! and `verify_aqua_tree_sync` (sync).
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use crate::core::verification_policy::{
     DecisionPoint, PolicyWarning, Severity, VerificationError, VerificationOutcome,
@@ -448,6 +447,9 @@ pub(crate) fn verify_batch_inclusion(
 
 pub(crate) struct ChainVerification {
     pub template_hash: RevisionLink,
+    /// The template's verification section. Collected for chain-shape
+    /// fidelity with the full SDK; core never executes it (D7).
+    #[allow(dead_code)]
     pub verification: crate::core::compute::TemplateVerification,
 }
 

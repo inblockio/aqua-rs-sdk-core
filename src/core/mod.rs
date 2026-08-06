@@ -109,12 +109,9 @@ pub(crate) use verify_stages::builtin_templates;
 pub use verify_stages::is_builtin_template_link;
 pub use verify_stages::is_signature_revision_type;
 pub use verify_stages::is_timestamp_revision_type;
-pub(crate) use verify_stages::resolve_builtin_name;
 pub use verify_stages::resolve_builtin_template;
 pub(crate) use verify_stages::resolve_dependency_trees;
-pub(crate) use verify_stages::resolve_template;
 pub use verify_stages::signature_template_hash;
-pub(crate) use verify_stages::template_digest_key;
 pub(crate) use verify_stages::verify_revision_compute;
 
 pub mod compute;
@@ -142,8 +139,8 @@ pub async fn verify_aqua_tree_util(
     // are already verified; without a template there is no schema/WASM to run.
     let mut tolerated_missing_template: std::collections::HashSet<RevisionLink> =
         std::collections::HashSet::new();
-    let mut wasm_outputs: HashMap<String, serde_json::Value> = HashMap::new();
-    let mut template_trust: HashMap<String, TemplateTrust> = HashMap::new();
+    let wasm_outputs: HashMap<String, serde_json::Value> = HashMap::new();
+    let template_trust: HashMap<String, TemplateTrust> = HashMap::new();
     let revisions = &aqua_tree_wrapper.aqua_tree.revisions;
     let indent = "\t";
 
@@ -381,12 +378,12 @@ pub async fn verify_aqua_tree_util(
     // ── Stage 3: Compute + type-specific (async, I/O) ────────────────
     // Only runs for revisions that passed Stages 0-2.
     let chain = verify_common::build_chain(aqua_tree_wrapper);
-    let branches = verify_common::build_branches(aqua_tree_wrapper, &chain);
-    let current_time = verify_common::current_time_secs();
-    let linked_revisions = verify_common::build_linked_revisions(&verified_linked);
-    let linked_tree_states =
+    let _branches = verify_common::build_branches(aqua_tree_wrapper, &chain);
+    let _current_time = verify_common::current_time_secs();
+    let _linked_revisions = verify_common::build_linked_revisions(&verified_linked);
+    let _linked_tree_states =
         verify_common::build_linked_tree_states(&verified_linked, &lt_wasm_outputs);
-    let linked_tree_payloads = verify_common::build_linked_tree_payloads(&verified_linked);
+    let _linked_tree_payloads = verify_common::build_linked_tree_payloads(&verified_linked);
 
     for (revision_hash, revision) in revisions {
         // Policy tolerated a missing template for this revision (template_not_found = Warn).
