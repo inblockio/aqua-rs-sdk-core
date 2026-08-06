@@ -713,6 +713,26 @@ pub(crate) fn verify_revision_compute(
         }
     }
 
+    // Timestamp revisions: the chain's WASM performs the on-chain / TSA
+    // attestation check, which core cannot run. Route through the governed
+    // timestamp_unavailable decision point (COMPUTE_UNSUPPORTED is mapped
+    // there by both pipelines for timestamp-typed revisions): strict policy
+    // rejects the unverifiable attestation, a relaxed policy may tolerate it
+    // with a warning. This matches the hostless full SDK's behavior, so core
+    // is never more permissive under the same policy. The batch-inclusion
+    // Merkle proof (Stage 2.5) has already run at this point.
+    if is_timestamp_revision_type(&revision.get_revision_type()) {
+        logs.push(LogData {
+            log: "Timestamp attestation cannot be verified by aqua-rs-sdk-core \
+                  (no WASM runtime, no providers); governed by the \
+                  timestamp_unavailable policy decision"
+                .to_string(),
+            log_type: LogType::Error,
+            ident: Some(indent.to_string()),
+        });
+        return Err((false, "COMPUTE_UNSUPPORTED".to_string(), logs));
+    }
+
     logs.push(LogData {
         log: "Compute verification skipped: built-in template WASM is not \
               executed by aqua-rs-sdk-core (no wasm_state recorded); use the \

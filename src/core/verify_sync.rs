@@ -391,7 +391,7 @@ pub fn verify_aqua_tree_sync(
                             policy.wasm_untrusted_signer,
                             DecisionPoint::WasmUntrustedSigner,
                         )
-                    } else if is_ts && host_required {
+                    } else if is_ts && (host_required || code == "COMPUTE_UNSUPPORTED") {
                         (
                             policy.timestamp_unavailable,
                             DecisionPoint::TimestampUnavailable,
