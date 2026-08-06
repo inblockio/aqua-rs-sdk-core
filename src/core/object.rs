@@ -368,9 +368,79 @@ pub fn verify_object_sync(
 mod tests {
     use super::*;
     use crate::schema::template::BuiltInTemplate;
+    use crate::schema::templates::AuditUserTurnMarker;
 
+    fn turn_marker_template_link() -> RevisionLink {
+        RevisionLink::from_bytes(AuditUserTurnMarker::TEMPLATE_LINK)
+    }
 
+    fn valid_payload() -> serde_json::Value {
+        serde_json::json!({
+            "signer_did": "did:key:z6MkServer",
+            "session_id": "sess-abc123",
+            "turn_index": 0,
+            "opens_at": 1747526400
+        })
+    }
 
+    #[test]
+    fn valid_payload_succeeds() {
+        let result = create_object_util(
+            turn_marker_template_link(),
+            None,
+            valid_payload(),
+            Method::Scalar,
+            HashType::Sha3_256,
+        );
+        assert!(result.is_ok(), "valid turn marker payload should succeed");
+    }
+
+    #[test]
+    fn missing_required_field_fails() {
+        let mut payload = valid_payload();
+        payload.as_object_mut().unwrap().remove("session_id");
+        let result = create_object_util(
+            turn_marker_template_link(),
+            None,
+            payload,
+            Method::Scalar,
+            HashType::Sha3_256,
+        );
+        assert!(result.is_err(), "missing session_id should fail");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(
+            err_msg.contains("session_id"),
+            "error should mention missing field, got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn extra_field_rejected() {
+        let mut payload = valid_payload();
+        payload.as_object_mut().unwrap().insert(
+            "extra_field".to_string(),
+            serde_json::json!("should not be here"),
+        );
+        let result = create_object_util(
+            turn_marker_template_link(),
+            None,
+            payload,
+            Method::Scalar,
+            HashType::Sha3_256,
+        );
+        assert!(
+            result.is_err(),
+            "extra field should be rejected (additionalProperties: false)"
+        );
+        let err_msg = format!("{}", result.unwrap_err());
+        let err_lower = err_msg.to_lowercase();
+        assert!(
+            err_lower.contains("additional"),
+            "error should mention additionalProperties, got: {}",
+            err_msg
+        );
+    }
 
 
     #[test]
@@ -390,11 +460,182 @@ mod tests {
         );
     }
 
+    #[test]
+    fn negative_turn_index_fails() {
+        let mut payload = valid_payload();
+        payload["turn_index"] = serde_json::json!(-1);
+        let result = create_object_util(
+            turn_marker_template_link(),
+            None,
+            payload,
+            Method::Scalar,
+            HashType::Sha3_256,
+        );
+        assert!(
+            result.is_err(),
+            "negative turn_index should fail (minimum: 0)"
+        );
+    }
 
     // ── Typed genesis anchor tests ────────────────────────────────────────
 
+    #[test]
+    fn typed_genesis_has_anchor_and_object() {
+        let tree = create_object_util(
+            turn_marker_template_link(),
+            None,
+            valid_payload(),
+            Method::Scalar,
+            HashType::Sha3_256,
+        )
+        .expect("valid payload");
 
+        assert_eq!(
+            tree.revisions.len(),
+            2,
+            "genesis tree must have anchor + object"
+        );
 
+        let (_, genesis_rev) = tree.get_genesis_revision().unwrap();
+        assert!(
+            genesis_rev.as_anchor().is_some(),
+            "genesis revision must be an Anchor"
+        );
+
+        let has_object = tree.revisions.values().any(|r| r.as_object().is_some());
+        assert!(has_object, "tree must contain an Object revision");
+    }
+
+    #[test]
+    fn typed_genesis_anchor_links_template() {
+        let tree = create_object_util(
+            turn_marker_template_link(),
+            None,
+            valid_payload(),
+            Method::Scalar,
+            HashType::Sha3_256,
+        )
+        .expect("valid payload");
+
+        let (_, genesis_rev) = tree.get_genesis_revision().unwrap();
+        let anchor = genesis_rev.as_anchor().expect("genesis is anchor");
+
+        assert!(
+            anchor
+                .structural_links()
+                .contains(&turn_marker_template_link()),
+            "anchor must link to the template hash"
+        );
+    }
+
+    #[test]
+    fn typed_genesis_object_chains_from_anchor() {
+        let tree = create_object_util(
+            turn_marker_template_link(),
+            None,
+            valid_payload(),
+            Method::Scalar,
+            HashType::Sha3_256,
+        )
+        .expect("valid payload");
+
+        let (anchor_hash, _) = tree.get_genesis_revision().unwrap();
+
+        // No template should be embedded in the object tree
+        let has_template = tree
+            .revisions
+            .values()
+            .any(|r| matches!(r, AnyRevision::Template(_)));
+        assert!(
+            !has_template,
+            "object tree must NOT contain an embedded Template"
+        );
+
+        // The object must chain directly from the anchor
+        let obj = tree
+            .revisions
+            .values()
+            .find_map(|r| r.as_object())
+            .expect("tree must contain an Object");
+        assert_eq!(
+            obj.previous_revision().unwrap(),
+            &anchor_hash,
+            "object must chain directly to the genesis anchor"
+        );
+    }
+
+    #[test]
+    fn chained_object_no_extra_anchor() {
+        let base_tree = create_object_util(
+            turn_marker_template_link(),
+            None,
+            valid_payload(),
+            Method::Scalar,
+            HashType::Sha3_256,
+        )
+        .expect("valid payload");
+
+        let anchor_count_before = base_tree
+            .revisions
+            .values()
+            .filter(|r| r.as_anchor().is_some())
+            .count();
+        assert_eq!(anchor_count_before, 1, "base tree has 1 anchor");
+        assert_eq!(base_tree.revisions.len(), 2, "base tree = anchor + object");
+
+        let mut payload2 = valid_payload();
+        payload2["turn_index"] = serde_json::json!(1);
+
+        let chained_tree = create_object_util(
+            turn_marker_template_link(),
+            Some(base_tree),
+            payload2,
+            Method::Scalar,
+            HashType::Sha3_256,
+        )
+        .expect("chaining must succeed");
+
+        let anchor_count_after = chained_tree
+            .revisions
+            .values()
+            .filter(|r| r.as_anchor().is_some())
+            .count();
+        assert_eq!(
+            anchor_count_after, 1,
+            "chaining must NOT add another anchor"
+        );
+        assert_eq!(
+            chained_tree.revisions.len(),
+            3,
+            "chained tree = anchor + first object + second object"
+        );
+    }
+
+    #[test]
+    fn typed_genesis_content_tip_is_object() {
+        let tree = create_object_util(
+            turn_marker_template_link(),
+            None,
+            valid_payload(),
+            Method::Scalar,
+            HashType::Sha3_256,
+        )
+        .expect("valid payload");
+
+        let (_, content_tip) = tree
+            .get_content_tip()
+            .expect("tree must have a content tip");
+        assert!(
+            content_tip.as_object().is_some(),
+            "content tip must be Object, not Anchor"
+        );
+
+        let (_, genesis) = tree.get_genesis_revision().unwrap();
+        assert!(
+            genesis.as_anchor().is_some(),
+            "genesis must be Anchor, not Object"
+        );
+    }
 
 
     #[test]

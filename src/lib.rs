@@ -1,47 +1,56 @@
-//! # Aqua RS SDK
+//! # aqua-rs-sdk-core
 //!
-//! Rust SDK for the [Aqua Protocol](https://aqua-protocol.org): verifiable, portable data chains
-//! with selective disclosure.
+//! Minimal, WASM-free core of the [Aqua Protocol](https://aqua-protocol.org)
+//! SDK: verifiable, portable data trees with anchors, typed objects,
+//! templates, cryptographic signatures, and selective disclosure. A
+//! compatible subset of the full `aqua-rs-sdk`: identical template hashes,
+//! canonicalization, and verification semantics, proven by the repo's
+//! `compat-tests` suite.
 //!
-//! The SDK provides three core capabilities:
+//! Core capabilities:
 //!
-//! - **Data Validation** — Template JSON Schema validates payload structure at object creation time.
-//! - **State Computation** — WASM state machines compute lifecycle state by examining verification context.
-//! - **Policy Evaluation** — [`PolicyEngine`](policy) evaluates boolean conditions against verified state.
+//! - **Data validation**: template JSON Schemas validate payload structure at
+//!   object creation and at verification time.
+//! - **Integrity and provenance**: revision hashing, Merkle proofs, tree
+//!   linking via anchors, and signature verification (Ed25519, EIP-191,
+//!   P-256, WebAuthn).
+//! - **Auditable agents**: the t1-t8 audit template family records AI-agent
+//!   turns as chains of signed, individually verifiable artifacts, with a
+//!   pseudonymous selective-disclosure preset.
+//!
+//! Not included (see the README's conformance profile for exact behavior):
+//! WASM compute execution, timestamping providers, the policy engine, the
+//! daemon runtime, and the template registry.
 //!
 //! ## Quick Start
 //!
 //! ```rust,ignore
-//! use aqua_verifier_rs::{Aquafier, Ed25519Signer};
-//! use aqua_verifier_rs::primitives::{RevisionLink, Method};
+//! use aqua_rs_sdk_core::Aquafier;
+//! use aqua_rs_sdk_core::primitives::RevisionLink;
 //!
-//! // 1. Build an Aquafier with your signer and hosts
-//! let aquafier = Aquafier::builder()
-//!     // .trust_store(my_trust_store)
-//!     // .blockchain_host(my_host)
-//!     .build();
+//! let aquafier = Aquafier::new();
 //!
-//! // 2. Create a typed object from a template
+//! // Create a typed object from a template
 //! let template_hash = RevisionLink::from_bytes([0u8; 32]);
 //! let payload = serde_json::json!({"name": "example"});
 //! let tree = aquafier.create_object(template_hash, None, payload, None).unwrap();
 //! ```
 //!
+//! See `examples/agent_audit_trail.rs` for the end-to-end agent
+//! auditability walkthrough.
+//!
 //! ## Feature Flags
 //!
 //! | Flag | Purpose |
 //! |------|---------|
-//! | `native` | Async runtime (tokio) for non-WASM targets |
-//! | `policy` | Policy engine: conditions, evaluation, PolicyStatement template |
-//! | `daemon` | Daemon module: stateful forest runtime (implies `policy`) |
-//! | `wasm` | WASM target via wasm-bindgen (mutually exclusive with `native`) |
+//! | `native` (default) | Enables the EIP-191 secp256k1 signer |
 //!
 //! ## Architecture
 //!
-//! The entry point is [`Aquafier`], constructed via [`Aquafier::builder()`]. External
-//! capabilities (signing, timestamping, blockchain verification, trust) are injected
-//! as trait objects through the [`AquafierBuilder`]. The SDK itself is stateless — the
-//! optional [`daemon`] module provides the stateful forest runtime.
+//! The entry point is [`Aquafier`], constructed via [`Aquafier::new()`] or
+//! [`Aquafier::builder()`]. The SDK is stateless; signing keys are passed per
+//! call as [`SigningCredentials`], and verification behavior is governed by a
+//! [`VerificationPolicy`].
 
 /// Data models: revision types, trees, templates, signatures, anchors, and file data.
 pub mod schema;

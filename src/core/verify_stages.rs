@@ -926,6 +926,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_resolve_all_builtin_templates() {
+        // Derive expectations from BUILTIN_TEMPLATES itself rather than a
+        // hardcoded list, so this test tracks whichever templates core ships
+        // without needing to be updated when the built-in set changes.
+        let empty = BTreeMap::new();
+        for hash in builtin_templates().keys() {
+            let link = RevisionLink::new(hash.to_vec());
+            let name = resolve_builtin_name(hash).unwrap_or("<unnamed>");
+            assert!(
+                resolve_template(&link, &empty, &[]).is_some(),
+                "built-in template '{name}' should resolve"
+            );
+        }
+    }
 
     #[test]
     fn test_resolve_unknown_template_returns_none() {
@@ -1126,7 +1141,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_builtin_template_tree_derived_is_single_revision() {
+        // AuditUserPrompt derives from AuditArtifact, but is still a single Template revision.
+        // Hierarchy is expressed via derives_from/ancestry, not via Anchor.
+        let tree = builtin_template_tree(&templates::AuditUserPrompt::TEMPLATE_LINK)
+            .expect("AuditUserPrompt should produce a tree");
+        assert_eq!(
+            tree.revisions.len(),
+            1,
+            "derived template tree should have 1 revision (Template only)"
+        );
+        assert!(
+            tree.revisions
+                .values()
+                .all(|r| matches!(r, AnyRevision::Template(_))),
+            "the single revision should be a Template"
+        );
+    }
 
+    #[test]
+    fn test_builtin_template_tree_chain_length() {
+        // AuditUserTurnMarker: identity_base → audit_artifact → audit_user_turn_marker
+        // (ancestry depth 2), so the resolved chain has 3 template trees.
+        let chain = builtin_template_tree_chain(&templates::AuditUserTurnMarker::TEMPLATE_LINK);
+        assert_eq!(
+            chain.len(),
+            3,
+            "AuditUserTurnMarker chain should have 3 trees"
+        );
+        // All template trees are single-revision (Template only, no Anchor)
+        for (i, tree) in chain.iter().enumerate() {
+            assert_eq!(tree.revisions.len(), 1, "tree {i} should have 1 revision");
+        }
+    }
 
     #[test]
     fn test_builtin_template_tree_unknown_returns_none() {
@@ -1341,6 +1389,32 @@ mod tests {
         );
     }
 
-
-
+    #[test]
+    fn test_missing_custom_ancestor_returns_err() {
+        // H3 (governed decision AncestorTemplateNotFound): when a child's ancestor
+        // cannot be resolved (not built-in, not in the tree, not in linked trees),
+        // collection must Err with the missing hash so the caller applies the
+        // governed decision (strict/offline fail, debug warns). A child must never
+        // silently bypass an unresolved parent's WASM.
+        let missing_link = RevisionLink::new(vec![0xAB; 32]);
+        let child = Template::new_derived(
+            Method::Scalar,
+            serde_json::json!({"type": "object"}),
+            RevisionLink::from_bytes(templates::TemplateMeta::TEMPLATE_LINK),
+            missing_link.clone(),
+            vec![missing_link.clone()],
+            Some(custom_verification(vec!["active"], vec![])),
+        );
+        let child_link = child.calculate_link(HashType::Sha3_256).unwrap();
+        let empty = BTreeMap::new();
+        // ChainVerification (the Ok payload) has no Debug impl, so match
+        // instead of unwrap_err() to avoid requiring one just for this test.
+        match collect_ancestor_verifications(&child, &child_link, &empty, &[]) {
+            Err(err) => assert_eq!(
+                err, missing_link,
+                "Err must carry the unresolved ancestor hash"
+            ),
+            Ok(_) => panic!("expected Err for an unresolvable custom ancestor"),
+        }
+    }
 }

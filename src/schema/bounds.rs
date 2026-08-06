@@ -136,6 +136,22 @@ mod tests {
 
 
     #[test]
+    fn derived_audit_template_inherits_bounds() {
+        use crate::schema::template::BuiltInTemplate;
+        use crate::schema::templates::AuditUserPrompt;
+        // AuditUserPrompt derives from audit_artifact and doesn't declare its
+        // own bounds, so resolution must walk ancestry and inherit
+        // audit_artifact's explicit bounds rather than falling through to
+        // identity_base or the permissive default.
+        let b = resolve_bounds(&AuditUserPrompt::TEMPLATE_LINK);
+        assert_eq!(b.max_chain_depth, 2, "should inherit audit_artifact bounds");
+        assert_eq!(b.max_anchor_branches, 4);
+        assert_eq!(b.max_signature_branches, 6);
+        assert_eq!(b.max_timestamp_branches, 4);
+        assert_eq!(b.max_total_revisions, 16);
+    }
+
+    #[test]
     fn audit_family_declares_explicit_anchor_bounds() {
         use crate::schema::template::BuiltInTemplate;
         use crate::schema::templates::{AuditArtifact, AuditUserTurnMarker};
@@ -173,4 +189,17 @@ mod tests {
         assert_eq!(b, ObjectBounds::permissive());
     }
 
+    #[test]
+    fn protocol_ceilings_are_consistent() {
+        // Walk every built-in template (rather than a hardcoded subset) so
+        // this test tracks whichever templates core ships, and assert none
+        // of them can exceed the protocol's hard ceilings once inheritance
+        // is resolved.
+        for hash in crate::core::builtin_templates().keys() {
+            let b = resolve_bounds(hash);
+            assert!(b.max_chain_depth <= PROTOCOL_MAX_CHAIN_DEPTH);
+            assert!(b.max_total_revisions <= PROTOCOL_MAX_REVISIONS_PER_OBJECT);
+            assert!(b.structural_links.max <= PROTOCOL_MAX_STRUCTURAL_LINKS_PER_ANCHOR);
+        }
+    }
 }

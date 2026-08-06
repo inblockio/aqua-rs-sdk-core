@@ -205,10 +205,3 @@ pub(crate) fn hex_to_bytes(hex_str: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-/// Encode bytes as a lowercase hex string with a `0x` prefix.
-pub(crate) fn bytes_to_hex(bytes: &[u8]) -> String {
-    format!(
-        "0x{}",
-        bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
-    )
-}

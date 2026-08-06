@@ -445,6 +445,9 @@ pub(crate) fn verify_batch_inclusion(
     Ok(logs)
 }
 
+/// One executable entry in a template chain (root first, child last):
+/// a template's identity hash together with its `verification` section.
+#[derive(Debug)]
 pub(crate) struct ChainVerification {
     pub template_hash: RevisionLink,
     /// The template's verification section. Collected for chain-shape
@@ -460,33 +463,455 @@ mod tests {
 
     // ── hex_to_bytes ─────────────────────────────────────────────────────────
 
+    #[test]
+    fn hex_to_bytes_strips_prefix() {
+        let with_prefix = hex_to_bytes("0xdeadbeef").unwrap();
+        let without_prefix = hex_to_bytes("deadbeef").unwrap();
+        assert_eq!(with_prefix, vec![0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!(with_prefix, without_prefix);
+    }
 
+    #[test]
+    fn hex_to_bytes_empty_string() {
+        assert!(hex_to_bytes("").unwrap().is_empty());
+        assert!(hex_to_bytes("0x").unwrap().is_empty());
+    }
 
+    #[test]
+    fn hex_to_bytes_rejects_odd_length() {
+        assert!(hex_to_bytes("0xabc").is_err());
+        assert!(hex_to_bytes("abc").is_err());
+    }
 
+    #[test]
+    fn hex_to_bytes_rejects_non_hex() {
+        assert!(hex_to_bytes("0xzzzz").is_err());
+        assert!(hex_to_bytes("ghij").is_err());
+    }
 
     // ── verify_batch_inclusion — single-leaf batch ────────────────────────────
 
+    fn make_hash_hex(byte: u8) -> String {
+        format!("0x{}", hex::encode(vec![byte; 32]))
+    }
 
+    fn make_nonce_hex(byte: u8) -> String {
+        format!("0x{}", hex::encode(vec![byte; 32]))
+    }
 
+    /// PCA-0015: batch `merkle_root` is a SHA3-256 multihash on the wire.
+    fn make_root_hex(bare_root: &[u8]) -> String {
+        format!(
+            "0x{}",
+            hex::encode(crate::primitives::multihash_encode(
+                crate::primitives::HashType::Sha3_256,
+                bare_root
+            ))
+        )
+    }
 
+    fn compute_shielded(raw: &[u8], nonce: &[u8]) -> Vec<u8> {
+        let mut input = Vec::with_capacity(64);
+        input.extend_from_slice(raw);
+        input.extend_from_slice(nonce);
+        HashType::Sha3_256.hash(&input)
+    }
 
+    #[test]
+    fn single_leaf_match_passes() {
+        use crate::primitives::merkle::batch_leaf_hash;
+        use crate::primitives::HashType;
 
+        let target_hash = make_hash_hex(0xAA);
+        let raw_bytes = vec![0xAA; 32];
+        let nonce = vec![0x11; 32];
+        let nonce_hex = make_nonce_hex(0x11);
+        let shielded = compute_shielded(&raw_bytes, &nonce);
+        let leaf = batch_leaf_hash(&HashType::Sha3_256, &shielded);
+        let root_hex = make_root_hex(&leaf);
 
+        let payloads = serde_json::json!({
+            "merkle_root": root_hex,
+            "batch_tree_size": 1,
+            "batch_leaf_index": 0,
+            "merkle_proof": [],
+            "shielding_nonce": nonce_hex
+        });
+        let result = verify_batch_inclusion(&payloads, &target_hash, "\t");
+        assert!(
+            result.is_ok(),
+            "matching single-leaf should pass: {result:?}"
+        );
+        let logs = result.unwrap();
+        assert!(logs.iter().any(|l| l.log.contains("single-leaf")));
+    }
 
+    #[test]
+    fn batch_tree_size_zero_rejected() {
+        let hash = make_hash_hex(0xAA);
+        let payloads = serde_json::json!({
+            "merkle_root": hash,
+            "batch_tree_size": 0,
+            "batch_leaf_index": 0,
+            "merkle_proof": [],
+            "shielding_nonce": make_nonce_hex(0x11)
+        });
+        let result = verify_batch_inclusion(&payloads, &hash, "\t");
+        assert!(result.is_err());
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "BATCH_TREE_SIZE_ZERO");
+    }
 
+    #[test]
+    fn missing_merkle_proof_fails() {
+        let hash = make_hash_hex(0xAA);
+        let payloads = serde_json::json!({
+            "merkle_root": hash,
+            "batch_tree_size": 1,
+            "batch_leaf_index": 0
+        });
+        let result = verify_batch_inclusion(&payloads, &hash, "\t");
+        assert!(result.is_err());
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "MERKLE_PROOF_MISSING");
+    }
 
+    #[test]
+    fn single_leaf_mismatch_fails() {
+        let hash_a = make_root_hex(&vec![0xAA; 32]);
+        let hash_b = make_hash_hex(0xBB);
+        let nonce_hex = make_nonce_hex(0x11);
+        let payloads = serde_json::json!({
+            "merkle_root": hash_a,
+            "batch_tree_size": 1,
+            "batch_leaf_index": 0,
+            "merkle_proof": [],
+            "shielding_nonce": nonce_hex
+        });
+        let result = verify_batch_inclusion(&payloads, &hash_b, "\t");
+        assert!(result.is_err());
+        let (valid, code, _) = result.unwrap_err();
+        assert!(!valid);
+        assert_eq!(code, "MERKLE_ROOT_MISMATCH");
+    }
 
+    #[test]
+    fn missing_merkle_root_fails() {
+        let payloads = serde_json::json!({ "timestamp": 1234567890 });
+        let result = verify_batch_inclusion(&payloads, "0xdeadbeef", "\t");
+        assert!(result.is_err());
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "MERKLE_ROOT_MISSING");
+    }
 
+    #[test]
+    fn missing_batch_tree_size_fails() {
+        let hash = make_hash_hex(0xAA);
+        let payloads = serde_json::json!({
+            "merkle_root": hash,
+            "merkle_proof": [],
+            "batch_leaf_index": 0
+        });
+        let result = verify_batch_inclusion(&payloads, &hash, "\t");
+        assert!(result.is_err());
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "BATCH_TREE_SIZE_MISSING");
+    }
+
+    #[test]
+    fn missing_batch_leaf_index_fails() {
+        let hash = make_hash_hex(0xAA);
+        let payloads = serde_json::json!({
+            "merkle_root": hash,
+            "merkle_proof": [],
+            "batch_tree_size": 1
+        });
+        let result = verify_batch_inclusion(&payloads, &hash, "\t");
+        assert!(result.is_err());
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "BATCH_LEAF_INDEX_MISSING");
+    }
+
+    #[test]
+    fn missing_shielding_nonce_fails() {
+        let hash = make_hash_hex(0xAA);
+        let payloads = serde_json::json!({
+            "merkle_root": hash,
+            "batch_tree_size": 1,
+            "batch_leaf_index": 0,
+            "merkle_proof": []
+        });
+        let result = verify_batch_inclusion(&payloads, &hash, "\t");
+        assert!(result.is_err());
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "SHIELDING_NONCE_MISSING");
+    }
 
     // ── verify_batch_inclusion — multi-leaf batch ─────────────────────────────
 
+    #[test]
+    fn out_of_bounds_leaf_index_fails() {
+        let hash = make_hash_hex(0xAA);
+        let payloads = serde_json::json!({
+            "merkle_root": hash,
+            "batch_tree_size": 4,
+            "batch_leaf_index": 4,   // == tree_size, out of bounds
+            "merkle_proof": [],
+            "shielding_nonce": make_nonce_hex(0x11)
+        });
+        let result = verify_batch_inclusion(&payloads, &hash, "\t");
+        assert!(result.is_err());
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "MERKLE_LEAF_INDEX_OUT_OF_BOUNDS");
+    }
 
+    /// Build a real 2-leaf shielded Merkle tree and verify inclusion.
+    ///
+    /// Leaves are H(0x00 || H(raw || nonce)) per membership shielding + RFC 6962.
+    #[test]
+    fn two_leaf_valid_inclusion_proof_passes() {
+        use crate::primitives::merkle::{batch_leaf_hash, inclusion_proof, merkle_root};
+        use crate::primitives::HashType;
 
+        let h0_raw: Vec<u8> = vec![0xAA; 32];
+        let h1_raw: Vec<u8> = vec![0xBB; 32];
+        let n0: Vec<u8> = vec![0x11; 32];
+        let n1: Vec<u8> = vec![0x22; 32];
+
+        let s0 = compute_shielded(&h0_raw, &n0);
+        let s1 = compute_shielded(&h1_raw, &n1);
+        let l0 = batch_leaf_hash(&HashType::Sha3_256, &s0);
+        let l1 = batch_leaf_hash(&HashType::Sha3_256, &s1);
+        let leaves = vec![l0, l1];
+
+        let root = merkle_root(&leaves, &HashType::Sha3_256);
+        let proof = inclusion_proof(&leaves, 0, &HashType::Sha3_256);
+
+        let root_hex = make_root_hex(&root);
+        let target_hex = format!("0x{}", hex::encode(&h0_raw));
+        let nonce_hex = format!("0x{}", hex::encode(&n0));
+        let proof_hexes: Vec<serde_json::Value> = proof
+            .iter()
+            .map(|p| serde_json::json!(format!("0x{}", hex::encode(p))))
+            .collect();
+
+        let payloads = serde_json::json!({
+            "merkle_root": root_hex,
+            "batch_tree_size": 2,
+            "batch_leaf_index": 0,
+            "merkle_proof": proof_hexes,
+            "shielding_nonce": nonce_hex
+        });
+
+        let result = verify_batch_inclusion(&payloads, &target_hex, "\t");
+        assert!(result.is_ok(), "valid 2-leaf proof should pass: {result:?}");
+        let logs = result.unwrap();
+        assert!(logs.iter().any(|l| l.log.contains("leaf 0 of 2")));
+    }
+
+    #[test]
+    fn two_leaf_wrong_root_fails() {
+        use crate::primitives::merkle::{batch_leaf_hash, inclusion_proof, merkle_root};
+        use crate::primitives::HashType;
+
+        let h0_raw: Vec<u8> = vec![0xAA; 32];
+        let h1_raw: Vec<u8> = vec![0xBB; 32];
+        let n0: Vec<u8> = vec![0x11; 32];
+        let n1: Vec<u8> = vec![0x22; 32];
+
+        let s0 = compute_shielded(&h0_raw, &n0);
+        let s1 = compute_shielded(&h1_raw, &n1);
+        let l0 = batch_leaf_hash(&HashType::Sha3_256, &s0);
+        let l1 = batch_leaf_hash(&HashType::Sha3_256, &s1);
+        let leaves = vec![l0, l1];
+
+        let _root = merkle_root(&leaves, &HashType::Sha3_256);
+        let proof = inclusion_proof(&leaves, 0, &HashType::Sha3_256);
+
+        let bad_root_hex = make_root_hex(&vec![0xFF; 32]);
+        let target_hex = format!("0x{}", hex::encode(&h0_raw));
+        let nonce_hex = format!("0x{}", hex::encode(&n0));
+        let proof_hexes: Vec<serde_json::Value> = proof
+            .iter()
+            .map(|p| serde_json::json!(format!("0x{}", hex::encode(p))))
+            .collect();
+
+        let payloads = serde_json::json!({
+            "merkle_root": bad_root_hex,
+            "batch_tree_size": 2,
+            "batch_leaf_index": 0,
+            "merkle_proof": proof_hexes,
+            "shielding_nonce": nonce_hex
+        });
+
+        let result = verify_batch_inclusion(&payloads, &target_hex, "\t");
+        assert!(result.is_err());
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "MERKLE_INCLUSION_FAILED");
+    }
 
     // ── Membership shielding tests ──────────────────────────────────────────
 
+    #[test]
+    fn four_leaf_shielded_tree_round_trip() {
+        use crate::primitives::merkle::{batch_leaf_hash, inclusion_proof, merkle_root};
+        use crate::primitives::HashType;
 
+        let raws: Vec<Vec<u8>> = (1u8..=4).map(|i| vec![i; 32]).collect();
+        let nonces: Vec<Vec<u8>> = (0xA1u8..=0xA4).map(|i| vec![i; 32]).collect();
 
+        let leaves: Vec<Vec<u8>> = raws
+            .iter()
+            .zip(nonces.iter())
+            .map(|(r, n)| {
+                let shielded = compute_shielded(r, n);
+                batch_leaf_hash(&HashType::Sha3_256, &shielded)
+            })
+            .collect();
 
+        let root = merkle_root(&leaves, &HashType::Sha3_256);
+        let root_hex = make_root_hex(&root);
 
+        for i in 0..4 {
+            let proof = inclusion_proof(&leaves, i, &HashType::Sha3_256);
+            let proof_hexes: Vec<serde_json::Value> = proof
+                .iter()
+                .map(|p| serde_json::json!(format!("0x{}", hex::encode(p))))
+                .collect();
+            let target_hex = format!("0x{}", hex::encode(&raws[i]));
+            let nonce_hex = format!("0x{}", hex::encode(&nonces[i]));
+
+            let payloads = serde_json::json!({
+                "merkle_root": root_hex,
+                "batch_tree_size": 4,
+                "batch_leaf_index": i,
+                "merkle_proof": proof_hexes,
+                "shielding_nonce": nonce_hex
+            });
+
+            let result = verify_batch_inclusion(&payloads, &target_hex, "");
+            assert!(
+                result.is_ok(),
+                "leaf {i}: shielded inclusion must pass: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn wrong_nonce_fails_verification() {
+        use crate::primitives::merkle::{batch_leaf_hash, inclusion_proof, merkle_root};
+        use crate::primitives::HashType;
+
+        let raws: Vec<Vec<u8>> = (1u8..=4).map(|i| vec![i; 32]).collect();
+        let nonces: Vec<Vec<u8>> = (0xA1u8..=0xA4).map(|i| vec![i; 32]).collect();
+
+        let leaves: Vec<Vec<u8>> = raws
+            .iter()
+            .zip(nonces.iter())
+            .map(|(r, n)| {
+                let shielded = compute_shielded(r, n);
+                batch_leaf_hash(&HashType::Sha3_256, &shielded)
+            })
+            .collect();
+
+        let root = merkle_root(&leaves, &HashType::Sha3_256);
+        let root_hex = make_root_hex(&root);
+        let proof = inclusion_proof(&leaves, 0, &HashType::Sha3_256);
+        let proof_hexes: Vec<serde_json::Value> = proof
+            .iter()
+            .map(|p| serde_json::json!(format!("0x{}", hex::encode(p))))
+            .collect();
+
+        let target_hex = format!("0x{}", hex::encode(&raws[0]));
+        let wrong_nonce = format!("0x{}", hex::encode(vec![0xFF; 32]));
+
+        let payloads = serde_json::json!({
+            "merkle_root": root_hex,
+            "batch_tree_size": 4,
+            "batch_leaf_index": 0,
+            "merkle_proof": proof_hexes,
+            "shielding_nonce": wrong_nonce
+        });
+
+        let result = verify_batch_inclusion(&payloads, &target_hex, "");
+        assert!(result.is_err(), "wrong nonce must fail verification");
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "MERKLE_INCLUSION_FAILED");
+    }
+
+    #[test]
+    fn no_sibling_matches_raw_leaf() {
+        use crate::primitives::merkle::{batch_leaf_hash, inclusion_proof, merkle_root};
+        use crate::primitives::HashType;
+
+        let raws: Vec<Vec<u8>> = (1u8..=4).map(|i| vec![i; 32]).collect();
+        let nonces: Vec<Vec<u8>> = (0xA1u8..=0xA4).map(|i| vec![i; 32]).collect();
+
+        let leaves: Vec<Vec<u8>> = raws
+            .iter()
+            .zip(nonces.iter())
+            .map(|(r, n)| {
+                let shielded = compute_shielded(r, n);
+                batch_leaf_hash(&HashType::Sha3_256, &shielded)
+            })
+            .collect();
+
+        let raw_leaf_hashes: Vec<Vec<u8>> = raws
+            .iter()
+            .map(|r| batch_leaf_hash(&HashType::Sha3_256, r))
+            .collect();
+
+        for i in 0..4 {
+            let proof = inclusion_proof(&leaves, i, &HashType::Sha3_256);
+            for sibling in &proof {
+                for raw_leaf in &raw_leaf_hashes {
+                    assert_ne!(
+                        sibling, raw_leaf,
+                        "sibling in proof must not match any raw (unshielded) leaf"
+                    );
+                }
+                for raw in &raws {
+                    assert_ne!(
+                        sibling, raw,
+                        "sibling in proof must not match any raw revision hash"
+                    );
+                }
+            }
+        }
+
+        let root = merkle_root(&leaves, &HashType::Sha3_256);
+        for raw_leaf in &raw_leaf_hashes {
+            assert_ne!(
+                &root, raw_leaf,
+                "merkle root must not match any raw leaf hash"
+            );
+        }
+    }
+
+    #[test]
+    fn shielded_without_domain_separation_fails() {
+        let raw = vec![0xAA; 32];
+        let nonce = vec![0x11; 32];
+        let nonce_hex = format!("0x{}", hex::encode(&nonce));
+
+        let shielded = compute_shielded(&raw, &nonce);
+        let bad_root = make_root_hex(&shielded);
+
+        let payloads = serde_json::json!({
+            "merkle_root": bad_root,
+            "batch_tree_size": 1,
+            "batch_leaf_index": 0,
+            "merkle_proof": [],
+            "shielding_nonce": nonce_hex
+        });
+
+        let target = format!("0x{}", hex::encode(&raw));
+        let result = verify_batch_inclusion(&payloads, &target, "");
+        assert!(
+            result.is_err(),
+            "shielded value without 0x00 domain prefix must fail"
+        );
+        let (_, code, _) = result.unwrap_err();
+        assert_eq!(code, "MERKLE_ROOT_MISMATCH");
+    }
 }
