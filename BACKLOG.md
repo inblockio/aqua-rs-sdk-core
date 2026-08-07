@@ -78,20 +78,30 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
 - [ ] B7. CI for the public repo: the compat suite needs a sibling
       `../aqua-rs-sdk` checkout. Either a private CI job with both repos or
       vendored fixtures for the public job.
-- [ ] B8a. `export_self_contained()` (from Tim's 2026-08-07 question): a
-      helper that walks a tree's revision types plus their ancestry and
-      embeds every referenced NON-built-in template revision under its full
-      multihash link, so exported artifacts of imported/custom templates are
-      complete, self-descriptive Aqua trees by default. Cost: template JSON
-      size per export. Complement: a strict export lint that reports which
-      types a tree references that are neither built-in nor embedded.
-      Today self-containment is opt-in (portable-template pattern,
-      docs/template-authoring.md section 6); objects of imported templates
-      verify only where the receiver already holds the template.
-      Design note: "built-in" is receiver-relative, not sender-relative
-      (core's own audit templates are unresolvable in the pre-harmonisation
-      full SDK), so the helper needs an embed-all mode alongside the
-      embed-non-built-ins default.
+- [x] B8a. Self-descriptive exports (2026-08-07). Shipped as
+      `Aquafier::export_tree(&tree, &extra_template_sources, &ExportOptions)`
+      in `src/core/export.rs`, re-exported from the crate root together with
+      `ExportOptions`, `ExportTreeError`, and the lint
+      `missing_templates(&tree) -> Vec<RevisionLink>`. Tim flipped the
+      default: embedding is ON (`include_templates`) and so is
+      `include_builtin_templates`, since "built-in" is receiver-relative
+      (core's audit templates are unresolvable in the pre-harmonisation full
+      SDK). `ExportOptions::bare()` is the per-call-site opt-out,
+      `non_builtin_only()` the lean middle. The walk starts at every typed
+      revision's `revision_type` and follows `derives_from` ancestry;
+      signature/anchor/template revisions need no resolution. Bodies resolve
+      from the tree, then the built-in catalog, then the extra sources; each
+      is embedded under its canonical full multihash link. Fails closed on any
+      unresolvable template, listing the hashes. Cost, as predicted: template
+      JSON size per export.
+      Evidence: 9 unit tests in `src/core/export.rs` (synthesized custom type
+      verifies standalone after a JSON round trip, with the un-exported
+      control failing; real opt-out; idempotency; no input mutation;
+      fail-closed; lint; audit-family bounds), the cross-SDK proof in
+      `compat-tests/tests/compat.rs::audit_turn_marker_cross_verifies` (with
+      a non-vacuity control), `examples/agent_audit_trail.rs`,
+      `README.md` ("Self-descriptive exports"), and
+      `docs/template-authoring.md` section 6.
 - [ ] B8. Commit a regeneration script for `primitives::unsupported`
       (currently an ad hoc extraction from the full SDK's catalog); document
       when to run it (every upstream template addition or removal).

@@ -9,7 +9,7 @@
 //!    same computed hash in both crates (H3),
 //!  * cross-verification: trees created and signed by core verify in the
 //!    full SDK, and vice versa (H3, H4),
-//!  * audit family: a t1 audit object signed by core verifies in both (H5) —
+//!  * audit family: a t1 audit object signed by core verifies in both (H5),
 //!    in the full SDK through a self-descriptive `export_tree`, with no
 //!    linked trees supplied,
 //!  * deterministic seed fixtures from the full SDK verify identically (H4),

@@ -283,7 +283,7 @@ pub fn export_tree_util(
 
     for (link, template) in resolved {
         if exported.revisions.contains_key(&link) {
-            continue; // already embedded — keeps the export idempotent
+            continue; // already embedded, which keeps the export idempotent
         }
         if !options.include_builtin_templates && crate::core::is_builtin_template_link(&link) {
             continue;

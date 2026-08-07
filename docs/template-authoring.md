@@ -127,23 +127,63 @@ verification time.
 Your template is not in this crate's built-in catalog, so a stranger's
 verifier cannot resolve its hash out of thin air. Template resolution checks,
 in order: the tree's own revisions, the built-in catalog, then linked trees.
-So either:
 
-- **Embed** the template revision in every exported tree:
+### Use `export_tree` (the primary path)
 
-  ```rust,ignore
-  let template: Template = serde_json::from_str(MyTemplate::TEMPLATE_JSON)?;
-  tree.revisions.insert(
-      RevisionLink::from_bytes(MyTemplate::TEMPLATE_LINK),
-      AnyRevision::Template(template),
-  );
-  ```
+Export the tree instead of shipping it raw. `export_tree` walks every typed
+revision's template plus its full `derives_from` ancestry and embeds each
+template revision into a clone of the tree, so the result resolves its own
+types out of its own revisions:
 
-- or pass the template tree alongside via
-  `verify_aqua_tree_with_linked_trees(...)`.
+```rust,ignore
+use aqua_rs_sdk_core::{ExportOptions, missing_templates};
+
+// One-revision template tree: the shape you publish and importers store.
+let mut revisions = BTreeMap::new();
+let template: Template = serde_json::from_str(MyTemplate::TEMPLATE_JSON)?;
+let link = template.calculate_link(HashType::Sha3_256)?;
+revisions.insert(link, AnyRevision::Template(template));
+let source = Tree { revisions, file_index: BTreeMap::new() };
+
+// Embedding is the default; extra sources supply bodies the tree and the
+// built-in catalog do not have.
+let portable = aquafier.export_tree(&tree, &[source], &ExportOptions::default())?;
+assert!(missing_templates(&portable).is_empty());
+```
+
+Notes:
+
+- The export **fails closed**: an unresolvable template or ancestor returns
+  the missing hashes and embeds nothing. Run `missing_templates(&tree)` first
+  (or in CI) to see what a tree still needs.
+- `ExportOptions::bare()` is the opt-out, `ExportOptions::non_builtin_only()`
+  skips this crate's built-ins. Prefer the default: **"built-in" is a property
+  of the receiver, not of the sender**, so a truly self-descriptive export
+  carries built-ins too.
+- Exporting is idempotent and never mutates the input.
+
+### The pattern underneath
+
+`export_tree` is automation over one primitive, which you can also apply by
+hand: insert the template revision into the tree under its **full multihash**
+link (`calculate_link`, `0x1620...`), never the bare 32-byte digest, because
+Stage 1 recomputes each revision's hash from its own key.
+
+```rust,ignore
+let template: Template = serde_json::from_str(MyTemplate::TEMPLATE_JSON)?;
+tree.revisions.insert(
+    RevisionLink::from_bytes(MyTemplate::TEMPLATE_LINK),
+    AnyRevision::Template(template),
+);
+```
+
+The alternative is not to embed at all and pass the template tree alongside
+via `verify_aqua_tree_with_linked_trees(...)`. That works, but it is a side
+input the receiver has to be given separately, which is exactly what
+self-descriptive export removes.
 
 The two shipped-but-uncached built-ins (`audit_round_anchor`,
-`audit_session_close`) use the same pattern; see
+`audit_session_close`) go through `export_tree`; see
 `examples/agent_audit_trail.rs` for it in action.
 
 ## 7. What core will not let you do

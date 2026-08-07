@@ -17,6 +17,10 @@
 //! - **Auditable agents**: the t1-t8 audit template family records AI-agent
 //!   turns as chains of signed, individually verifiable artifacts, with a
 //!   pseudonymous selective-disclosure preset.
+//! - **Self-descriptive exports**: [`Aquafier::export_tree`] embeds the
+//!   templates a tree references (and their ancestry) by default, so exported
+//!   artifacts are complete objects that verify with no side inputs.
+//!   [`missing_templates`] reports what an incoming tree is still missing.
 //!
 //! Not included (see the README's conformance profile for exact behavior):
 //! WASM compute execution, timestamping providers, the policy engine, the
@@ -547,7 +551,7 @@ impl Aquafier {
     ///
     /// 1. the tree's own revisions (templates already embedded),
     /// 2. this crate's built-in catalog,
-    /// 3. `extra_template_sources` — any trees that carry template revisions,
+    /// 3. `extra_template_sources`: any trees that carry template revisions,
     ///    for example the portable template trees an import store or registry
     ///    client hands out. Templates registered on this instance via
     ///    [`create_template`](Aquafier::create_template) are *not* consulted
@@ -557,7 +561,7 @@ impl Aquafier {
     /// Each collected template is inserted under its canonical full multihash
     /// link (the portable-template pattern of `docs/template-authoring.md`
     /// section 6). Signature, anchor, and template revisions need no
-    /// resolution — they dispatch on foundation hash constants — so only typed
+    /// resolution (they dispatch on foundation hash constants), so only typed
     /// object revisions drive the walk.
     ///
     /// The input is never mutated, templates already present are left alone,
