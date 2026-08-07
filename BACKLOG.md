@@ -78,6 +78,20 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
 - [ ] B7. CI for the public repo: the compat suite needs a sibling
       `../aqua-rs-sdk` checkout. Either a private CI job with both repos or
       vendored fixtures for the public job.
+- [ ] B8a. `export_self_contained()` (from Tim's 2026-08-07 question): a
+      helper that walks a tree's revision types plus their ancestry and
+      embeds every referenced NON-built-in template revision under its full
+      multihash link, so exported artifacts of imported/custom templates are
+      complete, self-descriptive Aqua trees by default. Cost: template JSON
+      size per export. Complement: a strict export lint that reports which
+      types a tree references that are neither built-in nor embedded.
+      Today self-containment is opt-in (portable-template pattern,
+      docs/template-authoring.md section 6); objects of imported templates
+      verify only where the receiver already holds the template.
+      Design note: "built-in" is receiver-relative, not sender-relative
+      (core's own audit templates are unresolvable in the pre-harmonisation
+      full SDK), so the helper needs an embed-all mode alongside the
+      embed-non-built-ins default.
 - [ ] B8. Commit a regeneration script for `primitives::unsupported`
       (currently an ad hoc extraction from the full SDK's catalog); document
       when to run it (every upstream template addition or removal).
