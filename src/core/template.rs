@@ -64,6 +64,45 @@ pub fn create_derived_template_util(
     ))
 }
 
+/// Human-readable label for a template revision: the built-in name when this
+/// crate knows the hash, a hash-derived fallback otherwise.
+///
+/// `file_index` labels are organizational metadata, never part of any hash.
+pub(crate) fn template_display_name(link: &RevisionLink) -> String {
+    if let Some(name) = link
+        .bare_digest()
+        .and_then(|key| crate::core::builtin_template_name(&key))
+    {
+        return name.to_string();
+    }
+    format!(
+        "template_{}",
+        link.to_string().chars().skip(2).take(8).collect::<String>()
+    )
+}
+
+/// Wrap an existing template definition as a one-revision Aqua tree keyed by
+/// its **full multihash** link.
+///
+/// See [`crate::Aquafier::template_tree`] for the rationale and the usage.
+pub fn template_tree_util(template: &Template, name: Option<&str>) -> Result<Tree, MethodError> {
+    // Template ids are always SHA3-256 (PCA-0015 §3.9).
+    let link = template.calculate_link(HashType::Sha3_256)?;
+    let label = name
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| template_display_name(&link));
+
+    let mut revisions: BTreeMap<RevisionLink, AnyRevision> = BTreeMap::new();
+    let mut file_index: BTreeMap<RevisionLink, String> = BTreeMap::new();
+    revisions.insert(link.clone(), AnyRevision::Template(template.clone()));
+    file_index.insert(link, label);
+
+    Ok(Tree {
+        revisions,
+        file_index,
+    })
+}
+
 pub fn create_template_util(
     json_schema: serde_json::Value,
     template_name: String,
@@ -255,5 +294,112 @@ mod tests {
         assert!(tmpl.derives_from().is_none());
         assert!(tmpl.ancestry().is_none());
         assert_eq!(tmpl.depth(), 0);
+    }
+}
+
+#[cfg(test)]
+mod template_tree_tests {
+    use super::*;
+    use crate::primitives::HashType;
+    use crate::schema::template::BuiltInTemplate;
+    use crate::schema::templates::AuditRoundAnchor;
+    use crate::verification::Linkable;
+    use crate::Aquafier;
+
+    fn round_anchor_template() -> Template {
+        serde_json::from_str(AuditRoundAnchor::TEMPLATE_JSON).unwrap()
+    }
+
+    #[test]
+    fn template_tree_is_keyed_by_the_full_multihash() {
+        let template = round_anchor_template();
+        let tree = Aquafier::new().template_tree(&template, None).unwrap();
+
+        assert_eq!(tree.revisions.len(), 1, "a template tree is one revision");
+        let (link, revision) = tree.revisions.iter().next().unwrap();
+        assert_eq!(
+            link.as_ref().len(),
+            34,
+            "the key must be the full multihash, not the bare digest"
+        );
+        assert_eq!(
+            link,
+            &template.calculate_link(HashType::Sha3_256).unwrap(),
+            "the key must be the template's canonical link"
+        );
+        assert!(matches!(revision, AnyRevision::Template(_)));
+        assert_eq!(
+            link.bare_digest(),
+            Some(AuditRoundAnchor::TEMPLATE_LINK),
+            "and it must name the pinned template hash"
+        );
+    }
+
+    #[test]
+    fn template_tree_labels_the_revision() {
+        let template = round_anchor_template();
+        let aquafier = Aquafier::new();
+
+        let named = aquafier
+            .template_tree(&template, Some("audit_round_anchor"))
+            .unwrap();
+        assert_eq!(
+            named.file_index.values().next().unwrap(),
+            "audit_round_anchor"
+        );
+
+        // audit_round_anchor is shipped but deliberately outside the
+        // verification catalog, so the default label is the hash fallback.
+        let unnamed = aquafier.template_tree(&template, None).unwrap();
+        let label = unnamed.file_index.values().next().unwrap();
+        assert!(label.starts_with("template_"), "unexpected label: {label}");
+
+        // A catalog template gets its built-in name for free.
+        let file_template: Template =
+            serde_json::from_str(crate::schema::templates::File::TEMPLATE_JSON).unwrap();
+        let builtin = aquafier.template_tree(&file_template, None).unwrap();
+        assert_eq!(builtin.file_index.values().next().unwrap(), "file");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn template_tree_resolves_a_custom_type_as_a_linked_tree() {
+        use crate::primitives::{Method, RevisionLink};
+        use crate::schema::templates::TemplateMeta;
+        use crate::schema::AquaTreeWrapper;
+
+        // A template core has never seen: only the tree that ships with the
+        // object can make it resolvable.
+        let template = Template::new(
+            Method::Scalar,
+            serde_json::json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": { "note": { "type": "string", "maxLength": 64 } },
+                "required": ["note"],
+                "additionalProperties": false
+            }),
+            RevisionLink::from_bytes(TemplateMeta::TEMPLATE_LINK),
+        );
+        let link = template.calculate_link(HashType::Sha3_256).unwrap();
+
+        let aquafier = Aquafier::new();
+        let source = aquafier.template_tree(&template, Some("note_v1")).unwrap();
+        let tree = aquafier
+            .create_object(link, None, serde_json::json!({ "note": "hello" }), None)
+            .unwrap();
+
+        let result = aquafier
+            .verify_aqua_tree_with_linked_trees(
+                AquaTreeWrapper::new(tree, None, None),
+                vec![AquaTreeWrapper::new(source, None, None)],
+                vec![],
+            )
+            .await
+            .unwrap();
+        assert!(
+            result.is_verified(),
+            "a template tree must resolve the object's type: {:?}",
+            result.logs
+        );
     }
 }

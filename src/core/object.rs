@@ -100,6 +100,131 @@ pub fn create_object_with_anchor_links_util(
     )
 }
 
+/// Errors returned by [`create_object_validated_util`].
+#[derive(Debug, thiserror::Error)]
+pub enum CreateObjectError {
+    /// No source could supply the template body, so the payload cannot be
+    /// validated. Fail closed rather than create an object of an unknown type.
+    #[error(
+        "template {0} is not resolvable from the previous tree, the built-in \
+         catalog, or the supplied template sources"
+    )]
+    TemplateNotFound(RevisionLink),
+    /// The template resolved, but one of its ancestors did not. Verification
+    /// resolves the whole `derives_from` chain, so an object created here
+    /// would fail at the receiver.
+    #[error("template {template} resolves but its ancestor {ancestor} does not")]
+    AncestorTemplateNotFound {
+        template: RevisionLink,
+        ancestor: RevisionLink,
+    },
+    /// The payload does not satisfy the template's JSON Schema.
+    #[error("payload does not satisfy template {template}:\n{}", .errors.join("\n"))]
+    SchemaViolation {
+        template: RevisionLink,
+        errors: Vec<String>,
+    },
+    /// Hashing or serialization failed while building the revision.
+    #[error(transparent)]
+    Method(#[from] MethodError),
+}
+
+/// Resolve a template body for creation-time validation.
+///
+/// Deliberately the same order verification uses (`resolve_template`): the
+/// tree's own revisions, then the built-in catalog, then the supplied trees.
+/// Creating an object under one resolution order and verifying it under
+/// another is how "it validated on my machine" happens.
+fn resolve_template_for_creation(
+    template_hash: &RevisionLink,
+    previous_tree: Option<&Tree>,
+    template_sources: &[Tree],
+) -> Option<crate::schema::Template> {
+    if let Some(template) = previous_tree
+        .and_then(|tree| tree.revisions.get(template_hash))
+        .and_then(|revision| revision.as_template())
+    {
+        return Some(template.clone());
+    }
+    if let Some(template) = super::verify_stages::resolve_builtin_template(template_hash) {
+        return Some(template);
+    }
+    template_sources.iter().find_map(|source| {
+        source
+            .revisions
+            .get(template_hash)
+            .and_then(|revision| revision.as_template())
+            .cloned()
+    })
+}
+
+/// Create a typed object revision, validating the payload against a template
+/// resolved from **explicit sources**.
+///
+/// See [`crate::Aquafier::create_object_validated`] for the full contract.
+pub fn create_object_validated_util(
+    template_hash: RevisionLink,
+    previous_tree: Option<Tree>,
+    payload: serde_json::Value,
+    method: Method,
+    hash_type: HashType,
+    template_sources: &[Tree],
+) -> Result<Tree, CreateObjectError> {
+    let template =
+        resolve_template_for_creation(&template_hash, previous_tree.as_ref(), template_sources)
+            .ok_or_else(|| CreateObjectError::TemplateNotFound(template_hash.clone()))?;
+
+    // Verification resolves the whole ancestry chain (a parent's rules apply to
+    // every child instance), so an object whose ancestors are unreachable from
+    // the same sources is dead on arrival. Say so now, not at the receiver.
+    if let Some(ancestry) = template.ancestry() {
+        for ancestor in ancestry {
+            if resolve_template_for_creation(ancestor, previous_tree.as_ref(), template_sources)
+                .is_none()
+            {
+                return Err(CreateObjectError::AncestorTemplateNotFound {
+                    template: template_hash.clone(),
+                    ancestor: ancestor.clone(),
+                });
+            }
+        }
+    }
+
+    let validator = jsonschema::validator_for(template.schema()).map_err(|e| {
+        CreateObjectError::Method(MethodError::Simple(format!(
+            "failed to compile template schema: {e}"
+        )))
+    })?;
+    let errors: Vec<String> = validator
+        .iter_errors(&payload)
+        .map(|e| {
+            let path = if e.instance_path.as_str().is_empty() {
+                "<root>".to_string()
+            } else {
+                e.instance_path.to_string()
+            };
+            format!("  - {path}: {e}")
+        })
+        .collect();
+    if !errors.is_empty() {
+        return Err(CreateObjectError::SchemaViolation {
+            template: template_hash,
+            errors,
+        });
+    }
+
+    create_object_internal(
+        template_hash,
+        previous_tree,
+        payload,
+        method,
+        None,
+        None,
+        hash_type,
+    )
+    .map_err(CreateObjectError::Method)
+}
+
 // Private helper that centralizes object creation logic for all public helpers.
 fn create_object_internal(
     template_hash: RevisionLink,
@@ -474,6 +599,204 @@ mod tests {
             result.is_err(),
             "negative turn_index should fail (minimum: 0)"
         );
+    }
+
+    // ── Validated creation against explicit sources (B6) ──────────────────
+
+    mod validated {
+        use super::*;
+        use crate::core::template::template_tree_util;
+        use crate::schema::templates::{AuditRoundAnchor, TemplateMeta};
+        use crate::schema::{AquaTreeWrapper, Template};
+        use crate::verification::Linkable;
+        use crate::Aquafier;
+
+        fn custom_template() -> (Template, RevisionLink) {
+            let template = Template::new(
+                Method::Scalar,
+                serde_json::json!({
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {
+                        "reading": { "type": "number", "minimum": 0, "maximum": 100 },
+                        "sensor_id": { "type": "string", "maxLength": 64 }
+                    },
+                    "required": ["reading", "sensor_id"],
+                    "additionalProperties": false
+                }),
+                RevisionLink::from_bytes(TemplateMeta::TEMPLATE_LINK),
+            );
+            let link = template.calculate_link(HashType::Sha3_256).unwrap();
+            (template, link)
+        }
+
+        fn good_payload() -> serde_json::Value {
+            serde_json::json!({ "reading": 21.5, "sensor_id": "sensor-1" })
+        }
+
+        #[test]
+        fn plain_create_object_does_not_validate_custom_types() {
+            // The documented gap this method exists to close: create_object can
+            // only validate what it can resolve, and it resolves built-ins only.
+            let (_, link) = custom_template();
+            let bad = serde_json::json!({ "reading": 999, "unexpected": true });
+            assert!(
+                create_object_util(link, None, bad, Method::Scalar, HashType::Sha3_256).is_ok(),
+                "create_object still accepts anything for an unresolvable type"
+            );
+        }
+
+        #[test]
+        fn validated_accepts_a_conforming_payload_and_matches_create_object() {
+            let (template, link) = custom_template();
+            let source = template_tree_util(&template, Some("sensor_v1")).unwrap();
+
+            let tree = create_object_validated_util(
+                link.clone(),
+                None,
+                good_payload(),
+                Method::Scalar,
+                HashType::Sha3_256,
+                &[source],
+            )
+            .expect("conforming payload");
+
+            // Same construction as the unvalidated path: a gate, not a fork.
+            let object = tree.revisions.values().find_map(|r| r.as_object()).unwrap();
+            assert_eq!(object.revision_type(), &link);
+            assert_eq!(object.payloads(), &good_payload());
+            assert_eq!(tree.revisions.len(), 2, "anchor + object, no template");
+        }
+
+        #[test]
+        fn validated_rejects_a_non_conforming_payload() {
+            let (template, link) = custom_template();
+            let source = template_tree_util(&template, None).unwrap();
+
+            let err = create_object_validated_util(
+                link,
+                None,
+                serde_json::json!({ "reading": 900, "sensor_id": "sensor-1" }),
+                Method::Scalar,
+                HashType::Sha3_256,
+                &[source],
+            )
+            .expect_err("900 is outside the declared maximum");
+            match err {
+                CreateObjectError::SchemaViolation { errors, .. } => {
+                    assert!(!errors.is_empty());
+                    assert!(
+                        format!("{errors:?}").contains("reading"),
+                        "error should name the offending field: {errors:?}"
+                    );
+                }
+                other => panic!("expected a schema violation, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn validated_fails_closed_without_a_source() {
+            let (_, link) = custom_template();
+            let err = create_object_validated_util(
+                link.clone(),
+                None,
+                good_payload(),
+                Method::Scalar,
+                HashType::Sha3_256,
+                &[],
+            )
+            .expect_err("nothing can supply the template");
+            assert!(matches!(err, CreateObjectError::TemplateNotFound(l) if l == link));
+        }
+
+        #[test]
+        fn validated_requires_the_ancestry_too() {
+            // audit_round_anchor derives from audit_artifact. Supplying only the
+            // child is a real-world mistake (publish the leaf, forget the root),
+            // and it must surface here rather than at the receiver.
+            let template: Template = serde_json::from_str(AuditRoundAnchor::TEMPLATE_JSON).unwrap();
+            let link = template.calculate_link(HashType::Sha3_256).unwrap();
+            let ancestor = template.ancestry().unwrap()[0].clone();
+
+            // audit_artifact IS a built-in here, so it resolves; to exercise the
+            // ancestor gap we need a custom parent that nobody supplies.
+            let orphan = Template::new_derived(
+                Method::Scalar,
+                serde_json::json!({
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": { "note": { "type": "string" } },
+                    "required": ["note"],
+                    "additionalProperties": false
+                }),
+                RevisionLink::from_bytes(TemplateMeta::TEMPLATE_LINK),
+                RevisionLink::from_bytes([0xAB; 32]),
+                vec![RevisionLink::from_bytes([0xAB; 32])],
+                None,
+            );
+            let orphan_link = orphan.calculate_link(HashType::Sha3_256).unwrap();
+            let source = template_tree_util(&orphan, None).unwrap();
+
+            let err = create_object_validated_util(
+                orphan_link,
+                None,
+                serde_json::json!({ "note": "hi" }),
+                Method::Scalar,
+                HashType::Sha3_256,
+                &[source],
+            )
+            .expect_err("the parent template is unreachable");
+            assert!(matches!(
+                err,
+                CreateObjectError::AncestorTemplateNotFound { .. }
+            ));
+
+            // Sanity: the real audit_round_anchor resolves its built-in ancestor.
+            assert_ne!(ancestor, RevisionLink::from_bytes([0xAB; 32]));
+            let ok = create_object_validated_util(
+                link,
+                None,
+                serde_json::json!({
+                    "signer_did": "did:key:z6MkExampleServer",
+                    "session_id": "s",
+                    "turn_id": format!("0x1620{}", "a".repeat(64)),
+                    "turn_index": 0,
+                    "artifact_count": 1,
+                    "leaf_hashes": [format!("0x1620{}", "b".repeat(64))],
+                    "merkle_root": format!("0x{}", "c".repeat(64)),
+                    "closed_at": 1754500008u64,
+                }),
+                Method::Scalar,
+                HashType::Sha3_256,
+                &[template_tree_util(&template, None).unwrap()],
+            );
+            assert!(ok.is_ok(), "built-in ancestor must resolve: {ok:?}");
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn a_validated_object_verifies_with_the_same_sources() {
+            let (template, link) = custom_template();
+            let source = template_tree_util(&template, Some("sensor_v1")).unwrap();
+            let aquafier = Aquafier::new();
+
+            let tree = aquafier
+                .create_object_validated(link, None, good_payload(), None, &[source.clone()])
+                .expect("conforming payload");
+
+            let result = aquafier
+                .verify_aqua_tree_with_linked_trees(
+                    AquaTreeWrapper::new(tree, None, None),
+                    vec![AquaTreeWrapper::new(source, None, None)],
+                    vec![],
+                )
+                .await
+                .unwrap();
+            assert!(
+                result.is_verified(),
+                "creation-time validation must agree with verification: {:?}",
+                result.logs
+            );
+        }
     }
 
     // ── Typed genesis anchor tests ────────────────────────────────────────

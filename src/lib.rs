@@ -78,7 +78,9 @@ use crate::core::{
         create_minimal_genesis_revision,
     },
     link::link_aqua_tree_util,
-    object::{create_object_util, create_object_with_anchor_links_util},
+    object::{
+        create_object_util, create_object_validated_util, create_object_with_anchor_links_util,
+    },
     template::create_template_util,
     verify_aqua_tree_util,
 };
@@ -116,6 +118,10 @@ pub use crate::schema::signature::{PreSignature, Signature, SignatureValue};
 
 // Re-export self-descriptive export types for consumers
 pub use crate::core::export::{missing_templates, ExportOptions, ExportTreeError};
+
+// Re-export the validated creation error and the key-generation helper
+pub use crate::core::object::CreateObjectError;
+pub use crate::core::signature::sign_did::generate_ed25519;
 
 // Re-export selective disclosure types for consumers
 pub use crate::core::disclosure::{
@@ -420,6 +426,39 @@ impl Aquafier {
         template_result
     }
 
+    /// Wrap an existing template definition as a one-revision Aqua tree, keyed
+    /// by the template's **full multihash** link.
+    ///
+    /// This is the portable-template shape: the unit a template author
+    /// publishes, an import store keeps, and
+    /// [`export_tree`](Aquafier::export_tree) accepts as a template source. It
+    /// is also what [`verify_aqua_tree_with_linked_trees`](Aquafier::verify_aqua_tree_with_linked_trees)
+    /// resolves custom types from.
+    ///
+    /// The full multihash key is the load-bearing detail: verification
+    /// recomputes every revision's hash from its own key, and template
+    /// resolution looks up `revision_type` links, which are multihashes. The
+    /// bare-digest keying used by this crate's internal built-in template
+    /// trees is an implementation detail of the catalog and is **not** usable
+    /// for a linked or embedded tree.
+    ///
+    /// `name` labels the revision in the tree's `file_index` (organizational
+    /// metadata, never hashed). Pass `None` for the built-in name when the
+    /// hash is known, or a `template_<hash prefix>` fallback.
+    ///
+    /// ```rust,ignore
+    /// let template: Template = serde_json::from_str(MyTemplate::TEMPLATE_JSON)?;
+    /// let source = aquafier.template_tree(&template, Some("my_template"))?;
+    /// let portable = aquafier.export_tree(&tree, &[source], &ExportOptions::default())?;
+    /// ```
+    pub fn template_tree(
+        &self,
+        template: &schema::Template,
+        name: Option<&str>,
+    ) -> Result<Tree, MethodError> {
+        crate::core::template::template_tree_util(template, name)
+    }
+
     /// Create a typed object revision in an Aqua tree.
     ///
     /// The `template_hash` identifies the template whose JSON Schema the
@@ -439,6 +478,64 @@ impl Aquafier {
             payload,
             method.unwrap_or(self.object_method),
             self.hash_type,
+        )
+    }
+
+    /// Create a typed object revision, validating the payload against a
+    /// template resolved from **explicit sources**.
+    ///
+    /// Use this for custom, imported, or registry-sourced types.
+    /// [`create_object`](Aquafier::create_object) validates the payload only
+    /// when the template is one of this crate's built-ins: it has no way to
+    /// find a template it does not ship, so for every other type it creates
+    /// the revision unvalidated and the mistake surfaces later, at the
+    /// receiver's verification. This method closes that gap by making the
+    /// caller say where the template lives.
+    ///
+    /// Resolution order is deliberately the one verification uses: the
+    /// `previous_tree`'s own revisions, this crate's built-in catalog, then
+    /// `template_sources` (one-revision template trees, as produced by
+    /// [`template_tree`](Aquafier::template_tree)).
+    ///
+    /// Fails closed:
+    ///
+    /// - [`CreateObjectError::TemplateNotFound`] if no source supplies the
+    ///   template (never a silent unvalidated create),
+    /// - [`CreateObjectError::AncestorTemplateNotFound`] if the template
+    ///   resolves but an ancestor in its `derives_from` chain does not, since
+    ///   verification resolves the whole chain,
+    /// - [`CreateObjectError::SchemaViolation`] with the per-field errors if
+    ///   the payload does not satisfy the schema.
+    ///
+    /// The resulting tree is byte-identical to what
+    /// [`create_object`](Aquafier::create_object) would have produced for the
+    /// same inputs: this adds a gate, not a different construction.
+    ///
+    /// ```rust,ignore
+    /// let source = aquafier.template_tree(&my_template, Some("my_template"))?;
+    /// let tree = aquafier.create_object_validated(
+    ///     my_template_link,
+    ///     None,
+    ///     serde_json::json!({ "field": "value" }),
+    ///     None,
+    ///     &[source],
+    /// )?;
+    /// ```
+    pub fn create_object_validated(
+        &self,
+        template_hash: RevisionLink,
+        previous_tree: Option<Tree>,
+        payload: serde_json::Value,
+        method: Option<Method>,
+        template_sources: &[Tree],
+    ) -> Result<Tree, CreateObjectError> {
+        create_object_validated_util(
+            template_hash,
+            previous_tree,
+            payload,
+            method.unwrap_or(self.object_method),
+            self.hash_type,
+            template_sources,
         )
     }
 
@@ -525,6 +622,29 @@ impl Aquafier {
     /// Resolve a built-in template hash to its human-readable name.
     pub fn builtin_template_name(hash: &[u8; 32]) -> Option<&'static str> {
         crate::core::builtin_template_name(hash)
+    }
+
+    /// The verification catalog as data: `(name, bare 32-byte digest)` for
+    /// every built-in template, sorted by name.
+    ///
+    /// Same set as [`builtin_templates`](Aquafier::builtin_templates), without
+    /// parsing the template bodies. See
+    /// [`shipped_template_hashes`](Aquafier::shipped_template_hashes) for the
+    /// full shipped set.
+    pub fn builtin_template_hashes() -> &'static [(&'static str, [u8; 32])] {
+        crate::core::builtin_template_hashes()
+    }
+
+    /// Every template this crate ships, as `(name, bare 32-byte digest)`
+    /// sorted by name: the machine-readable form of the hash ledger in
+    /// `tests/audit_template_hashes.txt`, which a unit test keeps in step.
+    ///
+    /// Superset of [`builtin_template_hashes`](Aquafier::builtin_template_hashes):
+    /// it also lists `template_meta`, `anchor_template`, `signature_base`,
+    /// `audit_round_anchor`, and `audit_session_close`, which ship but are not
+    /// resolved as object types.
+    pub fn shipped_template_hashes() -> &'static [(&'static str, [u8; 32])] {
+        crate::core::shipped_template_hashes()
     }
 
     /// Resolve all template dependency trees for the given tree.

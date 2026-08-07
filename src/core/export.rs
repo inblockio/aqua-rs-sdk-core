@@ -312,10 +312,7 @@ fn template_index_name(link: &RevisionLink, extra_template_sources: &[Tree]) -> 
             return name.clone();
         }
     }
-    format!(
-        "template_{}",
-        link.to_string().chars().skip(2).take(8).collect::<String>()
-    )
+    crate::core::template::template_display_name(link)
 }
 
 /// Export lint: the template hashes this tree references that are neither

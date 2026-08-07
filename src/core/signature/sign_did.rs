@@ -18,6 +18,40 @@ pub enum VerificationError {
     SignatureVerificationFailed(ed25519_dalek::SignatureError),
 }
 
+/// Generate a fresh Ed25519 signing key and its `did:key:z6Mk...` identity.
+///
+/// Returns `(secret_key, did)`:
+///
+/// - `secret_key` is the 32-byte Ed25519 seed, ready to hand to
+///   [`SigningCredentials::Did`](crate::schema::SigningCredentials::Did) as
+///   `did_key: secret_key.to_vec()`,
+/// - `did` is the `did:key:z6Mk...` string that the resulting signatures
+///   carry, derived from the matching public key.
+///
+/// Key material comes from the operating system CSPRNG (`OsRng`) through the
+/// same `ed25519-dalek` version this crate signs and verifies with, which is
+/// the point: consumers were hand-rolling generation against a possibly
+/// different `ed25519-dalek`, where a version skew silently produces keys that
+/// do not round-trip.
+///
+/// Handle the secret like a secret: it is the whole identity. Nothing in this
+/// crate persists it.
+///
+/// ```rust
+/// use aqua_rs_sdk_core::generate_ed25519;
+/// use aqua_rs_sdk_core::schema::SigningCredentials;
+///
+/// let (secret, did) = generate_ed25519();
+/// assert!(did.starts_with("did:key:z6Mk"));
+/// let credentials = SigningCredentials::Did { did_key: secret.to_vec() };
+/// let _ = credentials;
+/// ```
+pub fn generate_ed25519() -> ([u8; 32], String) {
+    let signing_key = SigningKey::generate(&mut rand::rngs::OsRng);
+    let did = crate::primitives::did_key::encode_ed25519(signing_key.verifying_key().as_bytes());
+    (signing_key.to_bytes(), did)
+}
+
 /// Handles Ed25519 signing operations using `did:key:z6Mk...` identity.
 pub struct DIDSigner;
 
@@ -128,5 +162,76 @@ impl super::traits::Signer for Ed25519Signer {
                 })
             },
         )
+    }
+}
+
+#[cfg(test)]
+mod generate_tests {
+    use super::*;
+
+    #[test]
+    fn generated_key_derives_the_returned_did() {
+        let (secret, did) = generate_ed25519();
+        assert_eq!(
+            DIDSigner.derive_did(&secret).unwrap(),
+            did,
+            "the returned DID must be the one this crate derives from the key"
+        );
+        assert!(
+            did.starts_with("did:key:z6Mk"),
+            "unexpected DID form: {did}"
+        );
+    }
+
+    #[test]
+    fn generated_keys_are_distinct() {
+        let (a, did_a) = generate_ed25519();
+        let (b, did_b) = generate_ed25519();
+        assert_ne!(a, b, "two generations returned the same secret");
+        assert_ne!(did_a, did_b);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn generated_key_signs_a_tree_that_verifies() {
+        use crate::schema::{AquaTreeWrapper, SigningCredentials};
+        use crate::{primitives::RevisionLink, schema::template::BuiltInTemplate};
+
+        let (secret, did) = generate_ed25519();
+        let aquafier = crate::Aquafier::new();
+        let tree = aquafier
+            .create_object(
+                RevisionLink::from_bytes(
+                    crate::schema::templates::AuditUserTurnMarker::TEMPLATE_LINK,
+                ),
+                None,
+                serde_json::json!({
+                    "signer_did": did,
+                    "session_id": "generated-key-session",
+                    "turn_index": 0,
+                    "opens_at": 1754500000u64,
+                }),
+                None,
+            )
+            .unwrap();
+        let signed = aquafier
+            .sign_aqua_tree(
+                AquaTreeWrapper::new(tree, None, None),
+                &SigningCredentials::Did {
+                    did_key: secret.to_vec(),
+                },
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        let result = aquafier
+            .verify_aqua_tree(AquaTreeWrapper::new(signed.aqua_tree, None, None), vec![])
+            .await
+            .unwrap();
+        assert!(
+            result.is_verified(),
+            "a tree signed with a generated key must verify: {:?}",
+            result.logs
+        );
     }
 }
