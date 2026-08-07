@@ -140,7 +140,10 @@ async fn emit_artifact(
 /// resolvable. This is the shape template authors publish and importers
 /// store; below it is handed to export_tree as a template source, which
 /// embeds it into the exported artifact.
-fn template_source(name: &str, template_json: &str) -> Result<(RevisionLink, Tree), Box<dyn Error>> {
+fn template_source(
+    name: &str,
+    template_json: &str,
+) -> Result<(RevisionLink, Tree), Box<dyn Error>> {
     let template: Template = serde_json::from_str(template_json)?;
     let link = template.calculate_link(HashType::Sha3_256)?;
 
@@ -513,7 +516,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // The export lint: an exported tree references no type a receiver cannot
     // resolve. Publishers can run this in CI over everything they ship.
-    for (label, tree) in [("round anchor", &anchor_tree), ("session close", &close_tree)] {
+    for (label, tree) in [
+        ("round anchor", &anchor_tree),
+        ("session close", &close_tree),
+    ] {
         let missing = missing_templates(tree);
         if !missing.is_empty() {
             return Err(format!("{label} still references unresolvable types: {missing:?}").into());

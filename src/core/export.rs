@@ -648,8 +648,7 @@ mod tests {
         );
         assert!(verify_standalone(&wire_round_trip(&full)).await);
 
-        let lean =
-            export_tree_util(&tree, &[source], &ExportOptions::non_builtin_only()).unwrap();
+        let lean = export_tree_util(&tree, &[source], &ExportOptions::non_builtin_only()).unwrap();
         assert_eq!(
             embedded_template_count(&lean),
             1,
