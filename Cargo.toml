@@ -21,6 +21,11 @@ name = "verify-templates"
 path = "src/bin/verify_templates.rs"
 required-features = ["native"]
 
+[[bin]]
+name = "regen-unsupported"
+path = "src/bin/regen_unsupported.rs"
+required-features = ["native"]
+
 [features]
 default = ["native"]
 # Platform-specific: enables the EIP-191 secp256k1 signer.

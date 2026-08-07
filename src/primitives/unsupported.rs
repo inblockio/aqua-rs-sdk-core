@@ -10,6 +10,27 @@
 //! Policy note: an unsupported template is still governed by the
 //! `template_not_found` verification-policy decision point, so strict()
 //! rejects and a tolerant policy may proceed without schema validation.
+//!
+//! ## Regenerating this table
+//!
+//! `UNSUPPORTED_SDK_TEMPLATES` is generated, not hand-maintained. Regenerate
+//! it with:
+//!
+//! ```text
+//! cargo run --bin regen-unsupported --features native
+//! ```
+//!
+//! (`src/bin/regen_unsupported.rs`; pass a path or set `AQUA_FULL_SDK_DIR` if
+//! the full aqua-rs-sdk checkout isn't the default `../aqua-rs-sdk` sibling;
+//! pass `--check` for a read-only drift check).
+//!
+//! Run it every time the full SDK's template catalog changes shape: a
+//! template is added to or removed from its `src/schema/templates/mod.rs`,
+//! or the content of one of the 8 templates this crate ships
+//! byte-identically changes upstream in a way that changes its hash. In
+//! particular, run it after BACKLOG.md items A1-A8 (the upstream
+//! audit-family re-rooting) land, since that changes which of the 11 audit
+//! variants collide with core's own re-rooted hashes.
 
 /// (bare digest, template name in the full SDK, what verifying it requires).
 pub static UNSUPPORTED_SDK_TEMPLATES: &[([u8; 32], &str, &str)] = &[
