@@ -10,6 +10,11 @@ date until the section is fully cleared, then archive them at the bottom).
 
 ## A. Upstream harmonisation (the full aqua-rs-sdk catches up)
 
+TRACKING NOTE (2026-08-07): these SDK changes stay in this backlog by
+direction and are NOT executed from the core side; they are one atomic
+migration inside the full aqua-rs-sdk, owned by that repo's maintainers.
+See HANDOVER.md.
+
 Context: on 2026-08-07 core deliberately forked the audit template family
 (re-rooted at `audit_artifact`, `identity_base` removed from ancestry,
 `audit_gusto_api_response` renamed to `audit_api_response`, customer-derived
