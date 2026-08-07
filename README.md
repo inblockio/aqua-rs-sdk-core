@@ -1,6 +1,10 @@
 # aqua-rs-sdk-core
-
 A minimal, WASM-free Rust implementation of the [Aqua Protocol](https://aqua-protocol.org) core: verifiable, portable data trees with anchors, typed objects, templates, cryptographic signatures, and selective disclosure.
+
+## DISCLAIMER
+This is an experimental, minimal community release of Aqua Protocol v4 under the Apache License 2.0.
+It is provided “AS IS”, without warranty of any kind. Use at your own risk.
+The software is under active development and currently receives only limited support and maintenance. Breaking changes are expected and may occur without notice.
 
 ### Implemented
 
