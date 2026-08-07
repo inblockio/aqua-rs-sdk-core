@@ -32,6 +32,11 @@ pub enum RedactionError {
     NotTreeMethod,
     #[error("Field not found in revision: {0}")]
     FieldNotFound(String),
+    #[error(
+        "Refusing to disclose /nonce: every leaf's salt is derived from it, so disclosing it \
+         makes every sealed value brute-forceable (spec 06 §6.1)"
+    )]
+    NonceDisclosureForbidden,
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
     #[error("Revision hash is not a valid multihash: {0}")]
@@ -42,6 +47,8 @@ pub enum RedactionError {
 pub enum DisclosureVerificationError {
     #[error("Leaf count mismatch: declared {declared}, provided {provided}")]
     LeafCountMismatch { declared: u32, provided: u32 },
+    #[error("Leaf count is 0: an empty leaf set has no defined Merkle root (spec 06 §3)")]
+    EmptyLeafSet,
     #[error("Duplicate leaf index: {0}")]
     DuplicateIndex(u32),
     #[error("Missing leaf index: {0}")]
@@ -692,10 +699,11 @@ impl DisclosureProfile {
 /// * `revision` — The full revision to redact.
 /// * `revision_hash` — The revision's hash (used in the output).
 /// * `disclosed_paths` — JSON Pointer paths to keep visible (e.g., `"/payloads/email"`).
-///   All other fields become opaque hashes. The nonce field (`/nonce`) is automatically
-///   redacted unless explicitly included in `disclosed_paths`.
+///   All other fields become opaque hashes. The nonce field (`/nonce`) is always
+///   redacted; asking for it is an error (spec 06 §6.1).
 ///
 /// # Errors
+/// * `NonceDisclosureForbidden` — `disclosed_paths` contains `/nonce` (spec 06 §6.1).
 /// * `NotTreeMethod` — Revision uses scalar method.
 /// * `FieldNotFound` — A requested path doesn't exist in the revision.
 pub fn redact_revision(
@@ -703,6 +711,17 @@ pub fn redact_revision(
     revision_hash: &RevisionLink,
     disclosed_paths: &[String],
 ) -> Result<RedactedRevision, RedactionError> {
+    // Spec 06 §6.1: the per-leaf salts are HKDF-derived from the revision's
+    // nonce, so a disclosed `/nonce` hands over every leaf's salt and leaves
+    // every sealed value_commit brute-forceable. The request is defective on
+    // its face, so it is refused before the revision is inspected at all —
+    // whether this revision even carries a `/nonce` leaf is beside the point.
+    // Exporter-side only: `verify_redacted_revision` stays accepting here, the
+    // spec places the obligation on the producer.
+    if disclosed_paths.iter().any(|p| p == "/nonce") {
+        return Err(RedactionError::NonceDisclosureForbidden);
+    }
+
     // Verify tree method
     let method = match revision {
         AnyRevision::Typed(obj) => obj.method(),
@@ -761,6 +780,7 @@ pub fn redact_revision(
 ///
 /// # Errors
 /// * `LeafCountMismatch` — Wrong number of leaves provided.
+/// * `EmptyLeafSet` — `leaf_count` is 0 (spec 06 §3 step 1, §6.5).
 /// * `DuplicateIndex` / `MissingIndex` — Leaf indices not contiguous 0..n.
 /// * `MerkleRootMismatch` — Reconstructed root doesn't match declared hash.
 pub fn verify_redacted_revision(
@@ -774,6 +794,12 @@ pub fn verify_redacted_revision(
             declared: leaf_count,
             provided,
         });
+    }
+    // Still step 1 (spec 06 §3): a declared count of 0 satisfies the comparison
+    // above vacuously and leaves every later check with nothing to reject, so
+    // an empty leaf set is refused here rather than reconstructed.
+    if leaf_count == 0 {
+        return Err(DisclosureVerificationError::EmptyLeafSet);
     }
 
     // Validate contiguous indices 0..leaf_count
@@ -823,7 +849,11 @@ pub fn verify_redacted_revision(
     let ordered_hashes: Vec<Vec<u8>> = leaf_hashes.into_iter().map(|(_, h)| h).collect();
 
     // Rebuild Merkle tree; the addressing link is the multihash of the root (§3.5).
-    let computed_root = merkle::merkle_root(&ordered_hashes, &hash_type);
+    // The total variant, not the panicking `merkle_root`: unreachable after the
+    // step-1 guard, but this input is attacker-controlled (§6.5) and a verifier
+    // must not be able to unwind on it.
+    let computed_root = merkle::try_merkle_root(&ordered_hashes, &hash_type)
+        .ok_or(DisclosureVerificationError::EmptyLeafSet)?;
     let computed_link = RevisionLink::new(multihash_encode(hash_type, &computed_root));
 
     if computed_link != redacted.revision_hash {
@@ -1148,17 +1178,23 @@ mod tests {
     fn test_redact_all_fields_disclosed() {
         let (hash, rev) = make_tree_revision();
 
-        // Get all leaf paths by computing metadata
+        // Get all leaf paths by computing metadata. `/nonce` is not a
+        // discloseable path (spec 06 §6.1), so maximal disclosure is
+        // everything else.
         let metas = compute_leaf_metadata(&rev, HashType::Sha3_256).unwrap();
-        let all_paths: Vec<String> = metas.iter().map(|m| m.path.clone()).collect();
+        let all_paths: Vec<String> = metas
+            .iter()
+            .map(|m| m.path.clone())
+            .filter(|p| p != "/nonce")
+            .collect();
 
         let redacted = redact_revision(&rev, &hash, &all_paths).unwrap();
 
-        // All leaves should be Disclosed
-        assert!(redacted
-            .leaves
-            .iter()
-            .all(|l| matches!(l, RedactedLeaf::Disclosed { .. })));
+        // Every leaf should be Disclosed except the nonce
+        assert!(redacted.leaves.iter().all(|l| match l {
+            RedactedLeaf::Disclosed { path, .. } => path != "/nonce",
+            RedactedLeaf::Redacted { path, .. } => path == "/nonce",
+        }));
 
         verify_redacted_revision(&redacted).unwrap();
     }
@@ -1300,6 +1336,45 @@ mod tests {
         ));
     }
 
+    /// Spec 06 §3 step 1 / §6.5: a hostile artifact that declares zero leaves
+    /// must be rejected, not reconstructed. This exact wire input reached
+    /// `merkle_root(&[], ..)` and unwound through the verifier before the guard
+    /// landed — the count check passes vacuously and the index loops are empty.
+    #[test]
+    fn test_zero_leaf_count_rejected() {
+        let json = format!(
+            r#"{{"revision_hash":"0x1620{}","leaf_count":0,"leaves":[]}}"#,
+            "ab".repeat(32)
+        );
+        let redacted: RedactedRevision = serde_json::from_str(&json).unwrap();
+
+        let err = verify_redacted_revision(&redacted).unwrap_err();
+        assert!(
+            matches!(err, DisclosureVerificationError::EmptyLeafSet),
+            "zero-leaf artifact must be rejected, got {err:?}"
+        );
+    }
+
+    /// The empty-set guard sits *inside* step 1, after the count comparison:
+    /// a declared count of 0 against non-empty `leaves` is still a mismatch.
+    #[test]
+    fn test_zero_leaf_count_with_leaves_is_count_mismatch() {
+        let (hash, rev) = make_tree_revision();
+        let mut redacted = redact_revision(&rev, &hash, &[]).unwrap();
+
+        // Lie about leaf count in the other direction
+        redacted.leaf_count = 0;
+
+        let err = verify_redacted_revision(&redacted).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                DisclosureVerificationError::LeafCountMismatch { declared: 0, .. }
+            ),
+            "count comparison must run before the empty-set guard, got {err:?}"
+        );
+    }
+
     #[test]
     fn test_duplicate_index_detected() {
         let (hash, rev) = make_tree_revision();
@@ -1350,23 +1425,29 @@ mod tests {
         verify_redacted_revision(&redacted).unwrap();
     }
 
+    /// Spec 06 §6.1: every leaf's salt is HKDF-derived from the nonce, so a
+    /// disclosed `/nonce` unseals every other leaf in the revision. The
+    /// exporter refuses the request; this behaviour was previously pinned the
+    /// other way by `test_nonce_can_be_explicitly_disclosed`.
     #[test]
-    fn test_nonce_can_be_explicitly_disclosed() {
+    fn test_nonce_disclosure_rejected() {
         let (hash, rev) = make_tree_revision();
 
-        let redacted =
-            redact_revision(&rev, &hash, &["/nonce".to_string(), "/version".to_string()]).unwrap();
-
-        let nonce_leaf = redacted
-            .leaves
-            .iter()
-            .find(|l| matches!(l, RedactedLeaf::Disclosed { path, .. } if path == "/nonce"));
+        let err = redact_revision(&rev, &hash, &["/nonce".to_string(), "/version".to_string()])
+            .unwrap_err();
         assert!(
-            nonce_leaf.is_some(),
-            "nonce should be disclosed when explicitly requested"
+            matches!(err, RedactionError::NonceDisclosureForbidden),
+            "disclosing /nonce must be refused, got {err:?}"
         );
 
-        verify_redacted_revision(&redacted).unwrap();
+        // The *request* is defective, so the refusal does not depend on the
+        // revision: a scalar revision reports this and not `NotTreeMethod`.
+        let (scalar_hash, scalar_rev) = make_scalar_revision();
+        let err = redact_revision(&scalar_rev, &scalar_hash, &["/nonce".to_string()]).unwrap_err();
+        assert!(
+            matches!(err, RedactionError::NonceDisclosureForbidden),
+            "the /nonce check must precede revision inspection, got {err:?}"
+        );
     }
 
     // ── L2 tests ─────────────────────────────────────────────────────────
@@ -1534,6 +1615,31 @@ mod tests {
         ));
     }
 
+    /// Spec 06 §6.1: `FieldRedacted` routes through `redact_revision`, so a
+    /// defective policy fails the whole export closed rather than shipping an
+    /// artifact whose every sealed leaf is brute-forceable.
+    #[test]
+    fn test_export_nonce_disclosure_rejected() {
+        let file_data = FileData::new("test.txt".to_string(), b"hello".to_vec(), PathBuf::new());
+        let tree = create_genesis_revision(file_data, Method::Tree).unwrap();
+        let (obj_hash, _) = tree.get_content_tip().unwrap();
+
+        let mut policy = DisclosurePolicy::default();
+        policy.revisions.insert(
+            obj_hash.clone(),
+            RevisionDisclosure::FieldRedacted(vec!["/nonce".to_string(), "/version".to_string()]),
+        );
+
+        let err = export_selective_tree(&tree, &policy).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ExportError::Redaction(RedactionError::NonceDisclosureForbidden)
+            ),
+            "export must fail closed on a /nonce-disclosing policy, got {err:?}"
+        );
+    }
+
     #[test]
     fn test_selective_tree_serialization_roundtrip() {
         let tree = make_signed_tree();
@@ -1599,6 +1705,41 @@ mod tests {
             err,
             SelectiveVerificationError::HashMismatch { .. }
         ));
+    }
+
+    /// Spec 06 §6.5: selective-tree inputs are attacker-controlled, so the
+    /// zero-leaf rejection must surface *through* the L2 verifier as an error
+    /// rather than unwind through it.
+    #[test]
+    fn test_verify_selective_tree_rejects_zero_leaf_redaction() {
+        let hash: RevisionLink = format!("0x1620{}", "ab".repeat(32)).parse().unwrap();
+        let mut revisions = BTreeMap::new();
+        revisions.insert(
+            hash.clone(),
+            SelectiveRevision::Redacted {
+                redacted: RedactedRevision {
+                    revision_hash: hash,
+                    leaf_count: 0,
+                    leaves: vec![],
+                },
+            },
+        );
+        let selective = SelectiveTree {
+            revisions,
+            file_index: BTreeMap::new(),
+        };
+
+        let err = verify_selective_tree(&selective).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                SelectiveVerificationError::RedactionFailed {
+                    source: DisclosureVerificationError::EmptyLeafSet,
+                    ..
+                }
+            ),
+            "zero-leaf redaction must surface as RedactionFailed, got {err:?}"
+        );
     }
 
     // ── Preset tests ──────────────────────────────────────────────────────

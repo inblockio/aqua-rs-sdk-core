@@ -147,6 +147,15 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
       being empty). `src/primitives/merkle.rs`, 3 tests: the panic is pinned,
       the `None` is asserted, and byte equality with `merkle_root` is checked
       for 1 to 17 leaves.
+      Follow-up (2026-08-08): the one call site that fed the primitive
+      attacker-controlled leaves is now guarded. `verify_redacted_revision` in
+      `src/core/disclosure.rs` rejects a `leaf_count` of 0 in the spec's step-1
+      "Count" position (`DisclosureVerificationError::EmptyLeafSet`, spec 06 §3
+      and §6.5) and reconstructs the root through `try_merkle_root`, so a
+      hostile `{leaf_count: 0, leaves: []}` artifact returns an error instead
+      of unwinding through the verifier. `merkle_root` itself is deliberately
+      unchanged — still byte-for-byte the full SDK's copy, still panicking on
+      empty by design.
 - [x] B10. Authoring papercuts (2026-08-07), partially: the constant landed,
       the `&HashType` alignment did not.
       `primitives::TEMPLATE_META_REVISION_TYPE` is a compile-time `&str`
@@ -190,7 +199,10 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
       `examples/agent_audit_trail.rs` and `docs/template-authoring.md` to the
       registry-sourced `create_object_validated` path, and revisit the
       `include_builtin_templates` export-default discussion once the audit
-      family is no longer built-in. Interop note: removal changes
+      family is no longer built-in, and update the protocol specification's
+      catalog-membership section (03-templates.md §8.1; §8.3 already declares
+      the audit family's catalog resolvability transitional). Interop note:
+      removal changes
       verification outcomes for bare (non-self-descriptive) audit trees —
       they will fail closed under `template_not_found` unless sources are
       supplied — so it must land together with the doc updates above, not

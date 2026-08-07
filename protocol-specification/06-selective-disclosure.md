@@ -301,8 +301,10 @@ The per-leaf salts are derived from the revision's 16-byte `nonce`
   many of which are low-entropy (booleans, enums, small integers, container
   markers, the fixed `version` and `method` strings) — trivially
   brute-forceable. This is an obligation on exporters and policy authors:
-  the artifact format itself cannot prevent a defective policy from
-  disclosing it.
+  an exporter MUST reject a redaction request that lists the `/nonce` leaf.
+  The artifact format itself cannot express the prohibition — to a verifier
+  a disclosed nonce is indistinguishable from any other disclosed leaf — so
+  the exporter is the enforcement point.
 - Guessing resistance for sealed values is bounded by the nonce's 128 bits.
 - Disclosing one leaf's salt does not weaken the others: per-leaf salts are
   derived through a one-way expansion keyed by the pointer path.
