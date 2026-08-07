@@ -39,8 +39,8 @@ use aqua_rs_sdk_core::schema::tree::Tree;
 use aqua_rs_sdk_core::schema::{AnyRevision, AquaTreeWrapper, SigningCredentials, Template};
 use aqua_rs_sdk_core::verification::Linkable;
 use aqua_rs_sdk_core::{
-    redact_revision, verify_redacted_revision, Aquafier, DisclosurePolicy, RedactedLeaf,
-    RevisionDisclosure,
+    missing_templates, redact_revision, verify_redacted_revision, Aquafier, DisclosurePolicy,
+    ExportOptions, RedactedLeaf, RevisionDisclosure,
 };
 use serde_json::json;
 
@@ -131,19 +131,16 @@ async fn emit_artifact(
     Ok((signed, object_hash))
 }
 
-/// Portable custom-template pattern.
+/// A one-revision template tree, keyed by the template's canonical SHA3-256
+/// multihash link.
 ///
 /// audit_round_anchor and audit_session_close are NOT in the SDK's built-in
-/// verification cache (this mirrors the full SDK). A verifier can only check
-/// objects of such templates if the template revision itself is made
-/// resolvable. We build a one-revision template tree, keyed by the template's
-/// canonical SHA3-256 multihash link, and hand it to
-/// verify_aqua_tree_with_linked_trees at verification time. This is exactly
-/// what third-party template authors must ship alongside their trees.
-fn portable_template(
-    name: &str,
-    template_json: &str,
-) -> Result<(RevisionLink, AquaTreeWrapper), Box<dyn Error>> {
+/// verification cache (this mirrors the full SDK), so a verifier can only
+/// check objects of those types if the template revision itself is made
+/// resolvable. This is the shape template authors publish and importers
+/// store; below it is handed to export_tree as a template source, which
+/// embeds it into the exported artifact.
+fn template_source(name: &str, template_json: &str) -> Result<(RevisionLink, Tree), Box<dyn Error>> {
     let template: Template = serde_json::from_str(template_json)?;
     let link = template.calculate_link(HashType::Sha3_256)?;
 
@@ -152,11 +149,13 @@ fn portable_template(
     revisions.insert(link.clone(), AnyRevision::Template(template));
     file_index.insert(link.clone(), name.to_string());
 
-    let tree = Tree {
-        revisions,
-        file_index,
-    };
-    Ok((link, AquaTreeWrapper::new(tree, None, None)))
+    Ok((
+        link,
+        Tree {
+            revisions,
+            file_index,
+        },
+    ))
 }
 
 /// Verify one tree through the full pipeline; print outcome and dump error
@@ -461,8 +460,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     round_anchor.validate()?;
 
-    let (round_template_link, round_template_wrapper) =
-        portable_template("audit_round_anchor", AuditRoundAnchor::TEMPLATE_JSON)?;
+    let (round_template_link, round_template_tree) =
+        template_source("audit_round_anchor", AuditRoundAnchor::TEMPLATE_JSON)?;
     let (anchor_tree, anchor_hash) = emit_artifact(
         &aquafier,
         round_template_link,
@@ -471,6 +470,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         &server,
     )
     .await?;
+    // Export it self-descriptive: the audit_round_anchor template (from the
+    // source tree above) and its audit_artifact root (from the built-in
+    // catalog) are embedded into the tree, so no verifier needs side inputs.
+    let anchor_tree = aquafier.export_tree(
+        &anchor_tree,
+        std::slice::from_ref(&round_template_tree),
+        &ExportOptions::default(),
+    )?;
     println!("Round anchor (server seals the turn)");
     println!("  merkle_root over 7 artifacts = {merkle_root}");
 
@@ -486,8 +493,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     session_close.validate()?;
 
-    let (close_template_link, close_template_wrapper) =
-        portable_template("audit_session_close", AuditSessionClose::TEMPLATE_JSON)?;
+    let (close_template_link, close_template_tree) =
+        template_source("audit_session_close", AuditSessionClose::TEMPLATE_JSON)?;
     let (close_tree, _close_hash) = emit_artifact(
         &aquafier,
         close_template_link,
@@ -496,19 +503,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
         &server,
     )
     .await?;
+    let close_tree = aquafier.export_tree(
+        &close_tree,
+        std::slice::from_ref(&close_template_tree),
+        &ExportOptions::default(),
+    )?;
     println!("Session close (server seals the session, reason: user_ended)");
+    println!();
+
+    // The export lint: an exported tree references no type a receiver cannot
+    // resolve. Publishers can run this in CI over everything they ship.
+    for (label, tree) in [("round anchor", &anchor_tree), ("session close", &close_tree)] {
+        let missing = missing_templates(tree);
+        if !missing.is_empty() {
+            return Err(format!("{label} still references unresolvable types: {missing:?}").into());
+        }
+    }
+    println!("Exported self-descriptive: the round anchor and the session close");
+    println!("carry their own template revisions (audit_round_anchor and");
+    println!("audit_session_close, plus their audit_artifact root), so they verify");
+    println!("standalone with no linked trees supplied. That is the default of");
+    println!("Aquafier::export_tree; opt out per call with ExportOptions::bare().");
     println!();
 
     // ── Verification ───────────────────────────────────────────────────
     // Every artifact is verified independently through the full pipeline:
     // structure, hash integrity, template schema, and signatures.
     //
-    // T1..T8 use built-in templates, so they verify self-contained. The
-    // round anchor and session close use templates OUTSIDE the built-in
-    // cache, so their portable template trees are passed as linked trees;
-    // the pipeline verifies those template trees first, then resolves the
-    // object's template from them.
-    println!("Verifying all artifact trees:");
+    // T1..T8 use built-in templates, so they verify self-contained. The round
+    // anchor and session close use templates OUTSIDE the built-in cache, and
+    // they too need no side inputs here: the export above embedded their
+    // template revisions, which template resolution reads before the catalog.
+    println!("Verifying all artifact trees (no linked trees, no side inputs):");
     let checks: Vec<(&str, &Tree, Vec<AquaTreeWrapper>)> = vec![
         ("T1 turn marker", &t1_tree, vec![]),
         ("T2 user prompt", &t2_tree, vec![]),
@@ -518,8 +544,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         ("T6 tool result", &t6_tree, vec![]),
         ("T7 hitl approval", &t7_tree, vec![]),
         ("T8 agent response", &t8_tree, vec![]),
-        ("round anchor", &anchor_tree, vec![round_template_wrapper]),
-        ("session close", &close_tree, vec![close_template_wrapper]),
+        ("round anchor", &anchor_tree, vec![]),
+        ("session close", &close_tree, vec![]),
     ];
 
     let mut all_verified = true;
