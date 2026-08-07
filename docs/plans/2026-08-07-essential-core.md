@@ -67,7 +67,7 @@ published through aqua-template-registry.
 | E3 | Confirmed | compat `audit_turn_marker_cross_verifies`: core-signed re-rooted T1 tree with embedded T1 + audit_artifact template revisions returns Verified from the full SDK. |
 | E4 | Confirmed | compat `timestamp_seeds_policy_parity`: strict rejects in both crates and core's log names "the timestamping module"; offline verifies-with-warnings in both (core via template_not_found, full SDK via timestamp_unavailable). |
 | E5 | Confirmed | `no_shipped_template_carries_wasm` walks the templates dir; `cargo tree` has zero wasm crates; the lookup carries 53 known full-SDK hashes. |
-| E6 | Confirmed after registry delivery | see the registry repo's audit-set seed + e2e (recorded in its own commits). |
+| E6 | Confirmed | registry tip bc20866: 60 unit + 4 audit_set (+1 ignored staleness, run: pass) + 11 e2e + cross-sdk 4/4 ignored-run green, all exit 0; 12 signed seed registrations committed, no key file in any ref; all 11 manifest hashes equal core's ledger (verified independently by the orchestrator). |
 | E7 | Confirmed | `cargo publish --dry-run` passes; README conformance profile rewritten (zero-WASM claim, unsupported-lookup row). |
 
 New audit hashes are recorded in tests/audit_template_hashes.txt (root
@@ -84,5 +84,12 @@ with grep counts.
 Follow-ups: upstream aqua-rs-sdk migration now covers the re-rooting +
 rename + scrubs in one move; the unsupported lookup should be
 regenerated when upstream's catalog changes (script-assisted, see module
-docs); registry seed set aqua/audit-set-v1 is the distribution channel
-for the new family.
+docs); registry seed set seed/audit-set-v1 (vendor `inblockio`, publisher DID
+did:key:z6MkqDxSY5Z3gMNR2qKzV9ZwZDLwUYi5DqevZWhR7vaDWLCN, registry tip
+bc20866) is the distribution channel for the new family. Registry-agent
+findings fed back to the core backlog: a RevisionLink::bare_digest()
+helper (the multihash-vs-bare-digest split is a live footgun), a
+programmatic builtin_template_hashes() accessor (the ledger is a text
+file under tests/ that publishers must parse by hand), and an
+`abstract` marker for audit_artifact (nothing machine-readable
+distinguishes it from instantiable templates).
