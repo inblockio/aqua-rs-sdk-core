@@ -291,6 +291,16 @@ let tree = aquafier.create_object_validated(
 )?;
 ```
 
+## Protocol specification
+
+An independent, implementation-agnostic specification of the protocol this
+crate implements — revisions, hashing and canonicalization, templates,
+signatures, anchor revisions, selective disclosure, and the verification
+procedure — lives in
+[protocol-specification/](protocol-specification/README.md). The code is the
+reference implementation; the specification states the protocol a conforming
+producer or verifier must follow.
+
 ## Custom templates
 
 See [docs/template-authoring.md](docs/template-authoring.md) for the full
