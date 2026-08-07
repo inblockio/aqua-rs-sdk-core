@@ -6,14 +6,27 @@
 #   compat  the compat-tests crate, which path-depends on a SIBLING checkout
 #           of the full SDK (../aqua-rs-sdk) and therefore has to clone it.
 #
-# NOTE ON THE COMPAT JOB: it clones https://github.com/inblockio/aqua-rs-sdk
-# over HTTPS with no credentials, so it requires that repository to be
-# PUBLIC. While it is private, this job fails at the clone step. That is
-# deliberate and visible: a compat job that silently skipped itself would be
-# the "green because uncovered" failure this project has already been bitten
-# by once. To run CI without it, either give the job a token with read access
-# to that repo (replace the clone step with actions/checkout and a PAT), or
-# mark the job `continue-on-error: true` while the situation lasts.
+# NOTE ON THE COMPAT JOB: it needs a checkout of inblockio/aqua-rs-sdk,
+# which is currently PRIVATE. The clone step therefore has three outcomes,
+# chosen so that CI is never red for a reason no commit can fix, and never
+# green while hiding a failure someone opted into:
+#
+#   1. The repo is reachable (public, or the AQUA_RS_SDK_READ_TOKEN secret
+#      is set): the suite runs and gates for real.
+#   2. No token is configured and the clone fails for lack of access: the
+#      job emits a prominent warning annotation plus a run-summary block
+#      saying the compat suite DID NOT RUN, and skips. This is a visible
+#      skip, not a silent one — the "green because uncovered" failure this
+#      project was bitten by once was a suite that LOOKED like coverage.
+#   3. A token IS configured but the clone fails, or the clone fails for
+#      any non-access reason (network, etc.): hard failure. A credential
+#      someone set up must not rot into a quiet skip.
+#
+# To restore real coverage while the full SDK stays private: create a
+# fine-grained PAT with read-only Contents access to inblockio/aqua-rs-sdk
+# and add it as the AQUA_RS_SDK_READ_TOKEN repository secret. The moment
+# the repo goes public (upstream migration is planned), coverage resumes
+# by itself with no workflow edit.
 #
 # Every command below is also the local verification list. Run them in this
 # order from a clean checkout and CI should agree with you.
@@ -94,6 +107,11 @@ jobs:
   compat:
     name: subset compatibility with the full SDK
     runs-on: ubuntu-latest
+    env:
+      # Optional fine-grained PAT, read-only on inblockio/aqua-rs-sdk. Empty
+      # string when the secret is not configured.
+      COMPAT_TOKEN: ${{ secrets.AQUA_RS_SDK_READ_TOKEN }}
+      GIT_TERMINAL_PROMPT: "0"
     steps:
       # Both repos land as siblings under the workspace directory, which is
       # what compat-tests/Cargo.toml's `path = "../aqua-rs-sdk"` expects.
@@ -101,16 +119,53 @@ jobs:
         with:
           path: aqua-rs-sdk-core
 
+      # See the header comment for the three outcomes this step encodes.
+      # The token travels as an ephemeral per-command header (the same
+      # mechanism actions/checkout uses) so it is never written to disk.
       - name: Clone the full SDK as a sibling checkout
-        run: git clone --depth 1 https://github.com/inblockio/aqua-rs-sdk.git aqua-rs-sdk
+        id: sdk
+        run: |
+          auth=()
+          if [ -n "$COMPAT_TOKEN" ]; then
+            basic=$(printf 'x-access-token:%s' "$COMPAT_TOKEN" | base64 -w0)
+            auth=(-c "http.https://github.com/.extraheader=AUTHORIZATION: basic $basic")
+          fi
+          if git "${auth[@]}" clone --depth 1 \
+              https://github.com/inblockio/aqua-rs-sdk.git aqua-rs-sdk \
+              2>clone-stderr.txt; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cat clone-stderr.txt
+          if [ -n "$COMPAT_TOKEN" ]; then
+            echo "::error title=compat clone failed with a configured token::AQUA_RS_SDK_READ_TOKEN is set but cloning inblockio/aqua-rs-sdk failed. The token has likely expired or lost access. Fix or remove the secret; this job will not silently skip while a credential is configured."
+            exit 1
+          fi
+          if grep -qiE 'could not read Username|Authentication failed|Repository not found|not found' clone-stderr.txt; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=COMPAT SUITE NOT RUN::inblockio/aqua-rs-sdk is private (or gone) and no read token is configured, so subset compatibility with the full SDK was NOT verified for this commit. Add the AQUA_RS_SDK_READ_TOKEN secret (fine-grained PAT, read-only Contents on that repo) or make it public to restore coverage."
+            {
+              echo "## Compat suite did not run"
+              echo
+              echo "\`inblockio/aqua-rs-sdk\` could not be cloned anonymously and no"
+              echo "\`AQUA_RS_SDK_READ_TOKEN\` secret is configured. Subset compatibility"
+              echo "with the full SDK was **not** verified for this commit. The core job"
+              echo "still gates everything that runs from this checkout alone."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Any other failure (DNS, timeout, ...) is a real CI problem.
+          exit 1
 
       - name: Install the stable toolchain
+        if: steps.sdk.outputs.available == 'true'
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
           rustc --version && cargo --version
 
       - name: Cache cargo registry and build output
+        if: steps.sdk.outputs.available == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -121,5 +176,6 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-compat-
 
       - name: Full workspace suite (unit tests plus compat)
+        if: steps.sdk.outputs.available == 'true'
         working-directory: aqua-rs-sdk-core
         run: cargo test --workspace
