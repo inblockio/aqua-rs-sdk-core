@@ -102,6 +102,14 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
       a non-vacuity control), `examples/agent_audit_trail.rs`,
       `README.md` ("Self-descriptive exports"), and
       `docs/template-authoring.md` section 6.
+- [ ] B9. `merkle::merkle_root(&[])` panics (unwrap on an empty level).
+      A library primitive fed caller data must return an error or a defined
+      empty-tree digest, not panic. Found by the registry's feed-head work,
+      which guards it caller-side for now.
+- [ ] B10. Small authoring papercuts from the registry sessions: export a
+      `TEMPLATE_META_REVISION_TYPE: &str` constant (the 0x1620... string every
+      template JSON author currently copy-pastes), and align `merkle`'s
+      `&HashType` parameters with `calculate_link`'s by-value convention.
 - [ ] B8. Commit a regeneration script for `primitives::unsupported`
       (currently an ad hoc extraction from the full SDK's catalog); document
       when to run it (every upstream template addition or removal).
