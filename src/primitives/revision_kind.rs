@@ -137,6 +137,34 @@ pub static TEMPLATE_META_HEX: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+/// The `revision_type` value every template JSON must carry: the full
+/// multihash of the `template_meta` foundation template.
+///
+/// Identical in value to [`TEMPLATE_META_HEX`], but a compile-time `&str`
+/// rather than a lazily built `String`, so template authors can paste it into
+/// a `const`, a test, or a generator instead of copying the 70-character
+/// literal out of an existing template file (which is what everyone did
+/// before, and how typos become new type identities).
+///
+/// ```rust
+/// use aqua_rs_sdk_core::primitives::TEMPLATE_META_REVISION_TYPE;
+///
+/// let template_json = serde_json::json!({
+///     "revision_type": TEMPLATE_META_REVISION_TYPE,
+///     "nonce": "0x11223344556677889900aabbccddeeff",
+///     "local_timestamp": 1754500000,
+///     "version": "https://aqua-protocol.org/docs/v4/schema",
+///     "method": "tree",
+///     "schema": { "type": "object" }
+/// });
+/// assert!(template_json["revision_type"].as_str().unwrap().starts_with("0x1620"));
+/// ```
+///
+/// The value is pinned by a test against `TemplateMeta::TEMPLATE_LINK`, so it
+/// cannot drift from the constant the code resolves.
+pub const TEMPLATE_META_REVISION_TYPE: &str =
+    "0x1620f3040850a8836717dd73e87d046723e11f9e9870e3b2e246803ad842fbf01155";
+
 /// Set of all foundation signature template ids (base plus per-algorithm), as
 /// **full multihashes** (PCA-0015 §3.3 comparison rule).
 ///
@@ -338,5 +366,67 @@ mod tests {
             resolve_revision_kind(&TEMPLATE_META_HEX),
             RevisionKind::Template,
         );
+    }
+}
+
+#[cfg(test)]
+mod template_meta_constant_tests {
+    use super::*;
+
+    #[test]
+    fn template_meta_revision_type_matches_the_template_link() {
+        // The pasted literal and the resolved constant are one value. If a
+        // future template_meta change moves the hash, this fails here rather
+        // than silently minting a wrong revision_type in authored templates.
+        assert_eq!(
+            TEMPLATE_META_REVISION_TYPE,
+            format!(
+                "0x{}",
+                hex::encode(template_id_multihash(&TemplateMeta::TEMPLATE_LINK))
+            ),
+            "TEMPLATE_META_REVISION_TYPE drifted from TemplateMeta::TEMPLATE_LINK"
+        );
+        assert_eq!(TEMPLATE_META_REVISION_TYPE, *TEMPLATE_META_HEX);
+    }
+
+    #[test]
+    fn template_meta_revision_type_parses_as_a_link() {
+        use crate::primitives::RevisionLink;
+        use std::str::FromStr;
+
+        let link = RevisionLink::from_str(TEMPLATE_META_REVISION_TYPE).unwrap();
+        assert_eq!(link.bare_digest(), Some(TemplateMeta::TEMPLATE_LINK));
+        assert_eq!(
+            link.hash_type().unwrap(),
+            crate::primitives::HashType::Sha3_256
+        );
+    }
+
+    #[test]
+    fn every_shipped_template_declares_it() {
+        // Every template JSON this crate ships carries exactly this string as
+        // its revision_type, which is what makes the constant safe to paste.
+        // The single exception is template_meta itself: being the
+        // template-of-templates, it cannot name itself recursively and carries
+        // the genesis bootstrap value instead (see GENESIS_TYPE_HASH).
+        let bootstrap = format!(
+            "0x{}",
+            hex::encode(template_id_multihash(&GENESIS_TYPE_HASH))
+        );
+        let mut checked = 0usize;
+        for (name, json, _) in crate::core::shipped_templates() {
+            let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
+            let declared = parsed["revision_type"].as_str().unwrap();
+            if *name == "template_meta" {
+                assert_eq!(declared, bootstrap, "template_meta lost its bootstrap");
+            } else {
+                assert_eq!(
+                    declared, TEMPLATE_META_REVISION_TYPE,
+                    "{name} declares a different revision_type"
+                );
+            }
+            checked += 1;
+        }
+        assert_eq!(checked, 19, "expected every shipped template to be checked");
     }
 }

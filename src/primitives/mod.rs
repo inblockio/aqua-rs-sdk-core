@@ -20,7 +20,7 @@ pub use hash_type::{multihash_decode, multihash_encode, HashType, Hashable, Mult
 pub use method::{Canonicalizable, Method, MethodError};
 pub use revision_kind::{
     genesis_type_link, resolve_revision_kind, template_id_multihash, RevisionKind,
-    ANCHOR_TEMPLATE_HEX, GENESIS_TYPE_HASH, TEMPLATE_META_HEX,
+    ANCHOR_TEMPLATE_HEX, GENESIS_TYPE_HASH, TEMPLATE_META_HEX, TEMPLATE_META_REVISION_TYPE,
 };
 pub use timestamp::Timestamp;
 pub use version::{ParseError as VersionParseError, Version};
@@ -121,6 +121,60 @@ impl RevisionLink {
     pub fn hash_type(&self) -> Result<HashType, MultihashError> {
         hash_type::multihash_decode(&self.0).map(|(ht, _)| ht)
     }
+
+    /// The bare 32-byte digest this link names, stripped of its multihash
+    /// prefix.
+    ///
+    /// The protocol writes hashes two ways and the split is a known footgun:
+    /// links on the wire (`revision_type`, `derives_from`, `ancestry`, anchor
+    /// `structural_links`) are **full multihashes** (`0x1620...`, 34 bytes),
+    /// while `TEMPLATE_LINK` constants, the ledger in
+    /// `tests/audit_template_hashes.txt`, and template `..._hash` fields are
+    /// **bare 64-hex digests**. This is the conversion between them.
+    ///
+    /// Accepts either form, mirroring how template resolution normalizes keys:
+    ///
+    /// - a bare 32-byte digest is returned as is (no algorithm is asserted,
+    ///   because a bare digest does not carry one),
+    /// - a well-formed Aqua-profile multihash is decoded and its digest
+    ///   returned; the algorithm is recoverable separately via
+    ///   [`hash_type`](RevisionLink::hash_type).
+    ///
+    /// Returns `None` (never panics) for anything else: a malformed multihash,
+    /// an unregistered multicodec, or a wrong-length digest.
+    ///
+    /// Note for template links specifically: template ids are always SHA3-256
+    /// (PCA-0015 §3.9), so a template link whose multihash names another
+    /// algorithm is not a valid template id even though `bare_digest` will
+    /// decode it. Template indexing enforces that separately; this accessor
+    /// stays algorithm-agnostic because revision links legitimately use
+    /// BLAKE3-256 as well.
+    ///
+    /// ```rust
+    /// use aqua_rs_sdk_core::primitives::RevisionLink;
+    ///
+    /// let digest = [0xABu8; 32];
+    /// let link = RevisionLink::from_bytes(digest); // 0x1620 || digest
+    /// assert_eq!(link.bare_digest(), Some(digest));
+    /// ```
+    pub fn bare_digest(&self) -> Option<[u8; 32]> {
+        if self.0.len() == 32 {
+            return self.0.as_slice().try_into().ok();
+        }
+        match hash_type::multihash_decode(&self.0) {
+            Ok((_, digest)) if digest.len() == 32 => digest.try_into().ok(),
+            _ => None,
+        }
+    }
+
+    /// [`bare_digest`](RevisionLink::bare_digest) rendered the way ledgers and
+    /// template `..._hash` payload fields write it: `0x` plus 64 lowercase hex
+    /// characters, with no multihash prefix.
+    ///
+    /// Returns `None` on the same inputs `bare_digest` rejects.
+    pub fn bare_digest_hex(&self) -> Option<String> {
+        self.bare_digest().map(|d| format!("0x{}", hex::encode(d)))
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -204,4 +258,78 @@ pub(crate) fn hex_to_bytes(hex_str: &str) -> Result<Vec<u8>, String> {
         out.push(byte);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod revision_link_tests {
+    use super::*;
+    use crate::schema::template::BuiltInTemplate;
+    use crate::schema::templates::AuditUserTurnMarker;
+
+    #[test]
+    fn bare_digest_round_trips_from_bytes() {
+        let digest = AuditUserTurnMarker::TEMPLATE_LINK;
+        let link = RevisionLink::from_bytes(digest);
+        assert_eq!(
+            link.as_ref().len(),
+            34,
+            "from_bytes yields a full multihash"
+        );
+        assert_eq!(link.bare_digest(), Some(digest));
+        assert_eq!(
+            link.bare_digest_hex(),
+            Some(format!("0x{}", hex::encode(digest)))
+        );
+    }
+
+    #[test]
+    fn bare_digest_passes_through_a_bare_digest() {
+        // The internal built-in template trees key revisions by the bare
+        // digest, so both forms have to answer.
+        let digest = [0x5Au8; 32];
+        let link = RevisionLink::new(digest.to_vec());
+        assert_eq!(link.bare_digest(), Some(digest));
+    }
+
+    #[test]
+    fn bare_digest_matches_the_template_index_key() {
+        // The template index normalizes links with the same rule for the
+        // SHA3-256 template ids it accepts; the two must never disagree.
+        for digest in crate::core::builtin_templates().keys() {
+            let link = RevisionLink::from_bytes(*digest);
+            assert_eq!(link.bare_digest(), Some(*digest));
+            assert_eq!(
+                RevisionLink::new(digest.to_vec()).bare_digest(),
+                Some(*digest)
+            );
+        }
+    }
+
+    #[test]
+    fn bare_digest_rejects_malformed_links() {
+        // Too short, too long, and a well-formed-looking prefix with a
+        // wrong-length digest all answer None rather than panicking.
+        for bytes in [vec![], vec![0x11], vec![0xAA; 31], vec![0xAA; 33], {
+            let mut v = vec![0x16, 0x20];
+            v.extend_from_slice(&[0xBB; 31]);
+            v
+        }] {
+            assert_eq!(
+                RevisionLink::new(bytes.clone()).bare_digest(),
+                None,
+                "malformed link must not decode: {bytes:?}"
+            );
+            assert_eq!(RevisionLink::new(bytes).bare_digest_hex(), None);
+        }
+    }
+
+    #[test]
+    fn bare_digest_is_algorithm_agnostic() {
+        // A BLAKE3 revision link is a legitimate link; its digest is readable
+        // even though it would not be a valid template id.
+        let digest = [0x77u8; 32];
+        let link = RevisionLink::new(hash_type::multihash_encode(HashType::Blake3_256, &digest));
+        assert_eq!(link.bare_digest(), Some(digest));
+        assert_eq!(link.hash_type().unwrap(), HashType::Blake3_256);
+    }
 }

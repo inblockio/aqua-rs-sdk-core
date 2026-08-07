@@ -102,6 +102,7 @@ mod verify_stages;
 use structural::*;
 use verify_stages::*;
 
+pub use verify_stages::builtin_template_hashes;
 pub(crate) use verify_stages::builtin_template_name;
 pub(crate) use verify_stages::builtin_template_tree;
 pub(crate) use verify_stages::builtin_template_tree_chain;
@@ -111,6 +112,8 @@ pub use verify_stages::is_signature_revision_type;
 pub use verify_stages::is_timestamp_revision_type;
 pub use verify_stages::resolve_builtin_template;
 pub(crate) use verify_stages::resolve_dependency_trees;
+pub use verify_stages::shipped_template_hashes;
+pub use verify_stages::shipped_templates;
 pub use verify_stages::signature_template_hash;
 pub(crate) use verify_stages::verify_revision_compute;
 

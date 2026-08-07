@@ -233,6 +233,121 @@ pub(crate) fn builtin_template_name(hash: &[u8; 32]) -> Option<&'static str> {
     resolve_builtin_name(hash)
 }
 
+// ── Programmatic template ledger (backlog B2) ────────────────────────────
+//
+// Publishers, registries, and CI need the shipped template hashes as data,
+// not as a text file under `tests/` that has to be parsed by hand. These
+// accessors are that data, and a test ties them to the ledger file so the
+// two can never drift.
+
+/// Every template this crate ships, as (name, template JSON, bare digest).
+///
+/// Built from each template's own `BuiltInTemplate` constants, so a template
+/// cannot appear here with a JSON body and a hash that disagree (a unit test
+/// recomputes every entry's hash from its JSON).
+static SHIPPED_TEMPLATES: &[(&str, &str, [u8; 32])] = {
+    use crate::schema::template::BuiltInTemplate as B;
+    use crate::schema::templates::*;
+    macro_rules! shipped {
+        ($($name:literal => $ty:ty),* $(,)?) => {
+            &[$(($name, <$ty as B>::TEMPLATE_JSON, <$ty as B>::TEMPLATE_LINK)),*]
+        };
+    }
+    shipped! {
+        "anchor_template" => AnchorTemplate,
+        "audit_agent_response" => AuditAgentResponse,
+        "audit_agent_thinking" => AuditAgentThinking,
+        "audit_agent_tool_call" => AuditAgentToolCall,
+        "audit_api_response" => AuditApiResponse,
+        "audit_artifact" => AuditArtifact,
+        "audit_hitl_approval" => AuditHitlApproval,
+        "audit_round_anchor" => AuditRoundAnchor,
+        "audit_session_close" => AuditSessionClose,
+        "audit_tool_result" => AuditToolResult,
+        "audit_user_prompt" => AuditUserPrompt,
+        "audit_user_turn_marker" => AuditUserTurnMarker,
+        "file" => File,
+        "signature_base" => SignatureBase,
+        "signature_ed25519" => SignatureEd25519,
+        "signature_eip191" => SignatureEip191,
+        "signature_p256" => SignatureP256,
+        "signature_webauthn" => SignatureWebauthn,
+        "template_meta" => TemplateMeta,
+    }
+};
+
+/// Every template this crate ships, as `(name, template JSON, bare 32-byte
+/// SHA3-256 digest)`, sorted by name.
+///
+/// The publishing view: a registry or distribution tool needs the body to
+/// publish and the digest to name it by, and here they cannot disagree (a unit
+/// test recomputes each digest from its JSON). For hashes alone, use
+/// [`shipped_template_hashes`]; for the resolvable catalog, use
+/// [`builtin_template_hashes`].
+pub fn shipped_templates() -> &'static [(&'static str, &'static str, [u8; 32])] {
+    SHIPPED_TEMPLATES
+}
+
+/// Name-sorted hashes of every template in the **verification catalog**: the
+/// templates this crate resolves by hash when validating an object.
+static BUILTIN_TEMPLATE_HASHES: LazyLock<Vec<(&'static str, [u8; 32])>> = LazyLock::new(|| {
+    let mut entries: Vec<(&'static str, [u8; 32])> = BUILTIN_TEMPLATES
+        .keys()
+        .map(|digest| {
+            (
+                resolve_builtin_name(digest).unwrap_or("<unnamed built-in template>"),
+                *digest,
+            )
+        })
+        .collect();
+    entries.sort_unstable();
+    entries
+});
+
+/// Name-sorted hashes of every template this crate **ships**, catalog or not.
+static SHIPPED_TEMPLATE_HASHES: LazyLock<Vec<(&'static str, [u8; 32])>> = LazyLock::new(|| {
+    let mut entries: Vec<(&'static str, [u8; 32])> = SHIPPED_TEMPLATES
+        .iter()
+        .map(|(name, _, digest)| (*name, *digest))
+        .collect();
+    entries.sort_unstable();
+    entries
+});
+
+/// The verification catalog as data: `(name, bare 32-byte SHA3-256 digest)`
+/// for every template this crate resolves by hash, sorted by name.
+///
+/// These are exactly the templates [`crate::Aquafier::builtin_templates`]
+/// returns. Wrap a digest with
+/// [`RevisionLink::from_bytes`](crate::primitives::RevisionLink::from_bytes)
+/// to get the wire-form multihash link, and use
+/// [`RevisionLink::bare_digest`](crate::primitives::RevisionLink::bare_digest)
+/// for the reverse.
+///
+/// Use [`shipped_template_hashes`] instead when you want everything this crate
+/// ships, including the templates that are deliberately outside the catalog
+/// (`template_meta`, `anchor_template`, `signature_base`, `audit_round_anchor`,
+/// `audit_session_close`).
+pub fn builtin_template_hashes() -> &'static [(&'static str, [u8; 32])] {
+    &BUILTIN_TEMPLATE_HASHES
+}
+
+/// Every template this crate ships, as `(name, bare 32-byte SHA3-256 digest)`
+/// sorted by name.
+///
+/// This is the machine-readable form of the hash ledger in
+/// `tests/audit_template_hashes.txt`, which publishers previously had to parse
+/// by hand; a unit test asserts the two agree entry for entry, in both
+/// directions, so neither can drift.
+///
+/// Superset of [`builtin_template_hashes`]: it also carries the five shipped
+/// templates that are not in the verification catalog because nothing resolves
+/// an object type through them (`template_meta`, `anchor_template`,
+/// `signature_base`, `audit_round_anchor`, `audit_session_close`).
+pub fn shipped_template_hashes() -> &'static [(&'static str, [u8; 32])] {
+    &SHIPPED_TEMPLATE_HASHES
+}
+
 /// All signature template hashes, indexed by signature_type string.
 static SIGNATURE_TEMPLATE_HASHES: LazyLock<HashMap<&'static str, [u8; 32]>> = LazyLock::new(|| {
     use crate::schema::template::BuiltInTemplate;
@@ -860,6 +975,117 @@ mod tests {
         (tree, obj_hash)
     }
 
+    // ── template hash accessors (B2) ──────────────────────────────────────
+
+    /// Parse the committed ledger into name-sorted (name, digest) pairs.
+    fn ledger_entries() -> Vec<(String, [u8; 32])> {
+        let raw = include_str!("../../tests/audit_template_hashes.txt");
+        let mut entries: Vec<(String, [u8; 32])> = raw
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(|line| {
+                let mut parts = line.split_whitespace();
+                let name = parts.next().expect("ledger line has a name").to_string();
+                let hex_digest = parts.next().expect("ledger line has a digest");
+                let bytes =
+                    hex::decode(hex_digest.trim_start_matches("0x")).expect("ledger digest is hex");
+                let digest: [u8; 32] = bytes.try_into().expect("ledger digest is 32 bytes");
+                (name, digest)
+            })
+            .collect();
+        entries.sort();
+        entries
+    }
+
+    #[test]
+    fn shipped_template_hashes_match_the_ledger_file() {
+        // The ledger is the published artifact; the accessor is what code
+        // reads. Entry for entry, in both directions, so an addition or a
+        // removal on either side fails here instead of shipping a lie.
+        let accessor: Vec<(String, [u8; 32])> = shipped_template_hashes()
+            .iter()
+            .map(|(name, digest)| (name.to_string(), *digest))
+            .collect();
+        assert_eq!(
+            accessor,
+            ledger_entries(),
+            "shipped_template_hashes() and tests/audit_template_hashes.txt disagree; \
+             regenerate the ledger with `cargo run --features native --bin verify-templates`"
+        );
+    }
+
+    #[test]
+    fn every_shipped_entry_hashes_to_its_declared_digest() {
+        // Ties each (name, JSON, digest) row together: the JSON body is the
+        // type identity, so a row whose constant does not match its own file
+        // would hand out a wrong hash.
+        for (name, json, digest) in SHIPPED_TEMPLATES {
+            let template: Template = serde_json::from_str(json)
+                .unwrap_or_else(|e| panic!("{name}: TEMPLATE_JSON does not parse: {e}"));
+            let link = template.calculate_link(HashType::Sha3_256).unwrap();
+            assert_eq!(
+                template_digest_key(link.as_ref()),
+                Some(*digest),
+                "{name}: TEMPLATE_LINK does not match the hash of TEMPLATE_JSON"
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_hashes_are_the_catalog_and_shipped_adds_exactly_the_uncached_five() {
+        // The catalog accessor must equal the resolution cache itself.
+        let catalog: std::collections::HashSet<[u8; 32]> =
+            builtin_template_hashes().iter().map(|(_, d)| *d).collect();
+        let cache: std::collections::HashSet<[u8; 32]> =
+            BUILTIN_TEMPLATES.keys().copied().collect();
+        assert_eq!(catalog, cache, "builtin_template_hashes() is not the cache");
+        assert_eq!(builtin_template_hashes().len(), BUILTIN_TEMPLATES.len());
+
+        // And the shipped set adds exactly the five deliberate exclusions
+        // (kept in step with builtin_caches_are_complete's KNOWN_UNCACHED).
+        let mut extra: Vec<&str> = shipped_template_hashes()
+            .iter()
+            .filter(|(_, digest)| !catalog.contains(digest))
+            .map(|(name, _)| *name)
+            .collect();
+        extra.sort_unstable();
+        assert_eq!(
+            extra,
+            vec![
+                "anchor_template",
+                "audit_round_anchor",
+                "audit_session_close",
+                "signature_base",
+                "template_meta",
+            ]
+        );
+    }
+
+    #[test]
+    fn hashes_are_name_sorted_and_unique() {
+        for entries in [builtin_template_hashes(), shipped_template_hashes()] {
+            let names: Vec<&str> = entries.iter().map(|(n, _)| *n).collect();
+            let mut sorted = names.clone();
+            sorted.sort_unstable();
+            assert_eq!(names, sorted, "entries must be name-sorted");
+            let unique: std::collections::HashSet<&&str> = names.iter().collect();
+            assert_eq!(unique.len(), names.len(), "duplicate template name");
+            let digests: std::collections::HashSet<[u8; 32]> =
+                entries.iter().map(|(_, d)| *d).collect();
+            assert_eq!(digests.len(), entries.len(), "duplicate template digest");
+        }
+    }
+
+    #[test]
+    fn digests_round_trip_through_revision_links() {
+        // The accessor hands out bare digests; the wire form is the multihash.
+        for (name, digest) in shipped_template_hashes() {
+            let link = RevisionLink::from_bytes(*digest);
+            assert_eq!(link.bare_digest(), Some(*digest), "{name}");
+        }
+    }
+
     // ── resolve_template ──────────────────────────────────────────────────
 
     #[test]
@@ -1240,7 +1466,6 @@ mod tests {
     }
 
     // ── Compositional monotonicity (spec-object-model §6) ────────────────
-
 
     // ── Custom (non-builtin) ancestor resolution (Workstream C: C2/C3) ────
     // spec-template-hierarchy §4 (WASM inheritance), spec-object-model §6

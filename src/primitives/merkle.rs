@@ -116,6 +116,19 @@ fn largest_power_of_two_less_than(n: usize) -> usize {
 
 /// Build a Merkle tree from leaf hashes and return the root.
 /// Uses 0x01 domain-separated internal nodes. Odd nodes promoted (NOT duplicated).
+///
+/// # Panics
+///
+/// Panics on an **empty** leaf slice: an empty tree has no defined root in
+/// this construction, and the final level is unwrapped. Callers that feed
+/// this caller-supplied or network-supplied data (a batch of artifacts to
+/// commit to, a feed head) must not pass the empty case through; use
+/// [`try_merkle_root`], which answers `None` instead of unwinding.
+///
+/// The panic is kept rather than fixed in place because this function is a
+/// byte-for-byte shared primitive with the full `aqua-rs-sdk`: changing its
+/// signature or its behavior here would fork a hashing path. `try_merkle_root`
+/// is the additive fix.
 pub fn merkle_root(leaves: &[Vec<u8>], hash_type: &HashType) -> Vec<u8> {
     if leaves.len() == 1 {
         return leaves[0].clone();
@@ -143,6 +156,40 @@ pub fn merkle_root(leaves: &[Vec<u8>], hash_type: &HashType) -> Vec<u8> {
     }
 
     current_level.into_iter().next().unwrap()
+}
+
+/// Total, non-panicking [`merkle_root`]: `None` for an empty leaf set, the
+/// root otherwise.
+///
+/// Prefer this wherever the leaf set comes from outside the calling function
+/// (a caller's batch, a decoded payload, a database read). An empty batch is a
+/// perfectly ordinary runtime condition, and a library primitive should let
+/// the caller decide what it means rather than unwind through them.
+///
+/// `Option` rather than `Result` on purpose: there is exactly one failure
+/// mode, it is fully described by the input being empty, and an error type
+/// would carry no information the caller does not already have. Every other
+/// input either produces a root or is a programming error in this module.
+///
+/// The bytes are identical to [`merkle_root`] for every non-empty input; this
+/// is a guard, not a second construction.
+///
+/// ```rust
+/// use aqua_rs_sdk_core::primitives::{merkle, HashType};
+///
+/// assert_eq!(merkle::try_merkle_root(&[], &HashType::Sha3_256), None);
+///
+/// let leaves = vec![merkle::batch_leaf_hash(&HashType::Sha3_256, b"only")];
+/// assert_eq!(
+///     merkle::try_merkle_root(&leaves, &HashType::Sha3_256),
+///     Some(merkle::merkle_root(&leaves, &HashType::Sha3_256))
+/// );
+/// ```
+pub fn try_merkle_root(leaves: &[Vec<u8>], hash_type: &HashType) -> Option<Vec<u8>> {
+    if leaves.is_empty() {
+        return None;
+    }
+    Some(merkle_root(leaves, hash_type))
 }
 
 /// Generate an RFC 9162 Section 2.1.3.1 inclusion proof (PATH algorithm).
@@ -799,5 +846,36 @@ mod tests {
         let sha3_root = merkle_root(&leaves, &HT);
         let blake3_root = merkle_root(&leaves, &BK);
         assert_ne!(sha3_root, blake3_root);
+    }
+
+    // ── try_merkle_root: the non-panicking guard (B9) ─────────────────────
+
+    #[test]
+    fn try_merkle_root_answers_none_on_empty_input() {
+        assert_eq!(try_merkle_root(&[], &HT), None);
+        assert_eq!(try_merkle_root(&[], &BK), None);
+    }
+
+    #[test]
+    fn merkle_root_panics_on_empty_input() {
+        // The documented panic, pinned so the rustdoc cannot go stale and a
+        // future "fix" in place is a deliberate, visible change.
+        let empty: Vec<Vec<u8>> = Vec::new();
+        let result = std::panic::catch_unwind(|| merkle_root(&empty, &HT));
+        assert!(result.is_err(), "merkle_root(&[]) is documented to panic");
+    }
+
+    #[test]
+    fn try_merkle_root_matches_merkle_root_for_every_non_empty_size() {
+        for n in 1..=17usize {
+            let leaves: Vec<Vec<u8>> = (0..n)
+                .map(|i| batch_leaf_hash(&HT, format!("leaf-{i}").as_bytes()))
+                .collect();
+            assert_eq!(
+                try_merkle_root(&leaves, &HT),
+                Some(merkle_root(&leaves, &HT)),
+                "guard changed the root for {n} leaves"
+            );
+        }
     }
 }
