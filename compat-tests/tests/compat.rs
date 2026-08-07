@@ -9,7 +9,9 @@
 //!    same computed hash in both crates (H3),
 //!  * cross-verification: trees created and signed by core verify in the
 //!    full SDK, and vice versa (H3, H4),
-//!  * audit family: a t1 audit object signed by core verifies in both (H5),
+//!  * audit family: a t1 audit object signed by core verifies in both (H5) —
+//!    in the full SDK through a self-descriptive `export_tree`, with no
+//!    linked trees supplied,
 //!  * deterministic seed fixtures from the full SDK verify identically (H4),
 //!  * timestamp trees: outcome parity per verification policy; core is
 //!    never more permissive than the hostless full SDK (H6),
@@ -255,23 +257,44 @@ async fn audit_turn_marker_cross_verifies() {
         "re-rooted audit chain must not involve the compute stage at all"
     );
 
-    // Full SDK: core's re-rooted templates are not full-SDK built-ins, so
-    // ship them with the tree (the portable-template pattern): embed the T1
-    // and audit_artifact template revisions under their multihash links.
-    let mut portable = signed.aqua_tree.clone();
-    for json in [
-        <core_::schema::templates::AuditUserTurnMarker as BuiltInTemplate>::TEMPLATE_JSON,
-        <core_::schema::templates::AuditArtifact as BuiltInTemplate>::TEMPLATE_JSON,
-    ] {
-        use core_::verification::Linkable;
-        let t: core_::schema::Template = serde_json::from_str(json).unwrap();
-        let link = t
-            .calculate_link(core_::primitives::HashType::Sha3_256)
-            .unwrap();
+    // Non-vacuity control: shipped as-is, the same tree must FAIL in the full
+    // SDK, whose catalog holds the old identity-rooted audit hashes instead.
+    // Without this the export assertion below could pass for the wrong reason.
+    let bare_result = full::Aquafier::new()
+        .verify_aqua_tree(
+            full::schema::AquaTreeWrapper::new(core_tree_to_full(&signed.aqua_tree), None, None),
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert!(
+        !bare_result.is_verified(),
+        "an un-exported core audit tree must not resolve in the full SDK"
+    );
+
+    // Full SDK: core's re-rooted templates are not full-SDK built-ins, so the
+    // tree has to carry them. That is exactly what a self-descriptive export
+    // is for: export_tree with defaults walks the T1 object's type and its
+    // audit_artifact ancestry and embeds both template revisions under their
+    // multihash links. "Built-in" is receiver-relative, which this assertion
+    // is the live proof of: both templates are built-in to core and neither
+    // resolves in the full SDK, so the export must ship them anyway.
+    let portable = aq
+        .export_tree(&signed.aqua_tree, &[], &core_::ExportOptions::default())
+        .expect("core's own audit templates resolve from its catalog");
+    assert_eq!(
         portable
             .revisions
-            .insert(link, core_::schema::AnyRevision::Template(t));
-    }
+            .values()
+            .filter(|r| matches!(r, core_::schema::AnyRevision::Template(_)))
+            .count(),
+        2,
+        "export must embed the T1 template and its audit_artifact root"
+    );
+    assert!(
+        core_::missing_templates(&portable).is_empty(),
+        "an exported tree must reference no unresolvable type"
+    );
     let full_tree = core_tree_to_full(&portable);
     let full_result = full::Aquafier::new()
         .verify_aqua_tree(
