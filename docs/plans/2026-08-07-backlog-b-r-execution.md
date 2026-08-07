@@ -121,3 +121,40 @@ convention) was NOT done. It is source-breaking for existing callers and
 diverges a file that is a verbatim copy of the full SDK's. The plan gated it
 on staying non-breaking, so it stays open in BACKLOG B10 with the reasoning
 and the `impl Borrow<HashType>` alternative written down.
+
+## Audit addendum: registry side + orchestrator verification (2026-08-07)
+
+Registry: R5, R7, R8, R9, R11, R13, R14 implemented; R6 and R12 delivered as
+design notes per plan; R12 backlog entry refined (dual-signed vendor_rotation
+shape, out-of-band confirmation mandatory, key compromise explicitly
+unsolvable cryptographically). New follow-ups recorded: R15 (corroboration in
+sync proper), R16 (mirror independence is assumed, not checked), R17 (alias
+repointing not expressible).
+
+Hypothesis outcomes, registry side:
+- P3 holds: all nine CI workflow commands executed locally, exit 0
+  (caveats recorded in the workflow: fmt not repo-scoped with path deps,
+  RUSTFLAGS -D warnings impossible against sibling warnings).
+- P4 holds: default suite green by exit code (131 lib + 9 suites), named
+  negatives for stale head, equivocating mirror, lag-vs-equivocation,
+  unreachable mirror, and four admit-exactly-one concurrency races.
+- P5 holds: audit-set-v1 byte-untouched; pre-existing trust configs and the
+  seed replay pass unmodified.
+- P6 holds: R6/R8/R12 changed docs only (plus the additive record_version).
+- P7 holds: both trees clean, every commit compiles.
+
+Notable honest correction by the executor: the initial R13 claim that a
+signature revision's local_timestamp is malleable was DISPROVED by its own
+probe test (core's pre-signature covers it); the doc comment records the
+corrected reasoning. This is the desired failure mode: claims probed, not
+assumed.
+
+Orchestrator verification (independently re-run, all by exit code):
+- core: workspace tests 0, example 0, verify-templates "All 19 templates
+  verified. No drift detected.", publish --locked --dry-run 0,
+  regen-unsupported --check 0. Stale rust-analyzer diagnostics on lib.rs
+  disregarded after cargo confirmed the build.
+- registry: default suite 0, cross-SDK --ignored 0, head_freshness 9/9,
+  concurrency 6/6, alias seed present (13 files), both design notes present.
+
+Pushed: core and registry mains advanced together after this addendum.
