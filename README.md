@@ -1,8 +1,16 @@
 # aqua-rs-sdk-core
 
-A minimal, WASM-free Rust implementation of the [Aqua Protocol](https://aqua-protocol.org)
-core: verifiable, portable data trees with anchors, typed objects, templates,
-cryptographic signatures, and selective disclosure.
+A minimal, WASM-free Rust implementation of the [Aqua Protocol](https://aqua-protocol.org) core: verifiable, portable data trees with anchors, typed objects, templates, cryptographic signatures, and selective disclosure.
+
+### Implemented
+
+- **Verification layer 1** — revision objects
+- **Verification layer 2** — template-typed trees (without WASM compute)
+
+### Not implemented
+
+- **Verification layer 3** — intra-tree (stateful) verification
+- **Verification layer 4** — policy evaluation of stateful tree objects
 
 `aqua-rs-sdk-core` is a **compatible subset** of the full
 [`aqua-rs-sdk`](https://github.com/inblockio/aqua-rs-sdk). Every template it
