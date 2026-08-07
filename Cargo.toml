@@ -1,5 +1,11 @@
 [workspace]
-members = [".", "compat-tests"]
+# compat-tests is deliberately NOT a workspace member: it path-depends on a
+# sibling checkout of the (private) full SDK, and membership would make every
+# cargo invocation in this repo — including `cargo fmt` and `cargo metadata` —
+# fail wherever that sibling is absent, e.g. the standalone CI job. Excluded,
+# it is its own root package, run explicitly with:
+#     cargo test --manifest-path compat-tests/Cargo.toml
+exclude = ["compat-tests"]
 
 [package]
 name = "aqua-rs-sdk-core"

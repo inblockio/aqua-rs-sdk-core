@@ -39,9 +39,11 @@ or agent.
 
 ## How to verify everything (exit codes, not grep counts)
 
-    # core (needs a sibling checkout of the full aqua-rs-sdk for compat-tests)
+    # core (standalone; compat-tests is not a workspace member and is run
+    # by manifest path — it needs a sibling checkout of the full aqua-rs-sdk)
     cd aqua-rs-sdk-core
-    cargo test --workspace && echo OK
+    cargo test && echo OK
+    cargo test --manifest-path compat-tests/Cargo.toml && echo OK
     cargo run --features native --bin verify-templates
     cargo run --example agent_audit_trail --features native
 

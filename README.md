@@ -13,10 +13,11 @@ A minimal, WASM-free Rust implementation of the [Aqua Protocol](https://aqua-pro
 - **Verification layer 4**: policy evaluation of stateful tree objects
 
 `aqua-rs-sdk-core` is a **compatible subset** of the full
-[`aqua-rs-sdk`](https://github.com/inblockio/aqua-rs-sdk). Every template it
-ships is byte-identical to the full SDK's copy, hashes and canonicalization are
-bit-for-bit the same, and trees created and signed with this crate verify in the
-full SDK (and vice versa). That compatibility is not aspirational: it is
+[`aqua-rs-sdk`](https://github.com/inblockio/aqua-rs-sdk). The templates it
+shares with the full SDK are byte-identical (the audit family is a deliberate,
+test-bounded fork pending upstream harmonisation), hashes and canonicalization
+are bit-for-bit the same, and trees created and signed with this crate verify
+in the full SDK (and vice versa). That compatibility is not aspirational: it is
 enforced by an integration test suite (`compat-tests/`) that runs both crates
 side by side.
 
@@ -28,7 +29,10 @@ build machinery gets in the way of consumers who only need the core data model.
 `aqua-rs-sdk-core` is the light-weight, dependency-lean cut for exactly one job:
 creating and verifying tamper-evident, signed, linkable data trees, with
 first-class support for **auditable AI-agent workflows** through the t1-t8
-audit template family.
+audit template family, distributed through the companion
+[`aqua-template-registry`](https://github.com/inblockio/aqua-template-registry)
+(agent templates are retrieved from the registry, not baked into consumers —
+see below).
 
 - No `wasm-bindgen`, no `wasmi`, no `cdylib`. Plain `rlib`, builds anywhere.
 - 18 runtime dependencies (the full SDK has about 30).
@@ -41,7 +45,7 @@ audit template family.
 | Primitives | revision links, multihash (SHA3-256, BLAKE3-256), canonicalization, Merkle trees, DID encoding (`did:key`, `did:pkh`) |
 | Revisions | genesis, typed objects, templates, anchors (tree linking), signatures |
 | Signatures | Ed25519 (`did:key`), EIP-191 secp256k1 (`did:pkh`), P-256, WebAuthn (verification) |
-| Templates | template machinery (`template_meta`, `anchor_template`, `file`), the base signature templates, and the eleven audit templates (t1-t8 plus `audit_artifact`, `audit_round_anchor`, `audit_session_close`), all data-only: **this crate ships zero WASM bytes** |
+| Templates | template machinery (`template_meta`, `anchor_template`, `file`) and the base signature templates as built-ins; the eleven audit/agent templates (t1-t8 plus `audit_artifact`, `audit_round_anchor`, `audit_session_close`) are **registry-distributed, not built-in** (see "Auditable AI agents" below). Everything is data-only: **this crate ships zero WASM bytes** |
 | Verification | the full L1-L3 pipeline (structure, hashes, schemas, signatures, cross-tree links), async and sync, governed by a configurable `VerificationPolicy` |
 | Disclosure | selective disclosure and redaction, including the `pseudonymous` preset for audit artifacts |
 | Export | `export_tree`: self-descriptive artifacts (referenced templates and their ancestry embedded by default), an explicit per-call opt-out, and the `missing_templates` lint |
@@ -58,7 +62,7 @@ the behavior is explicit, and never silently permissive:
 | Timestamping | No timestamp creation, no TSA or EVM providers, and the timestamp templates are not shipped. Timestamp revisions in incoming trees are still classified (`RevisionKind::Timestamp`), and their templates answer through the unsupported lookup above: `strict()` rejects, `offline()` tolerates with a warning. The hostless full SDK reaches the same outcomes through its `timestamp_unavailable` decision, and the compat suite proves the parity. |
 | Policy engine | Not included. (The `VerificationPolicy` decision points listed above are part of the verification pipeline, not the policy engine.) |
 | Daemon / forest runtime | Not included. |
-| Template registry | Not included by design. See the separate `aqua-template-registry` project for registering and subscribing to templates by publisher DID. |
+| Template registry | The registry client is not bundled. The agent (audit) templates are distributed **only** through the separate [`aqua-template-registry`](https://github.com/inblockio/aqua-template-registry) project: consumers subscribe by publisher DID, pin template hashes, and pass the retrieved templates to this crate as explicit template sources. |
 
 The invariant behind this table: **core is never more permissive than the full
 SDK under the same verification policy.**
@@ -116,16 +120,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Typed objects work the same way: pick a template, provide a payload that
-matches its JSON Schema, and the SDK builds the tree.
+Typed objects work the same way: retrieve the template, provide a payload
+that matches its JSON Schema, and the SDK builds the tree. Agent (audit)
+templates are **not** resolved implicitly: retrieve them from the
+[`aqua-template-registry`](https://github.com/inblockio/aqua-template-registry)
+and pass them as explicit template sources.
 
 ```rust,ignore
-use aqua_rs_sdk_core::schema::template::BuiltInTemplate;
-use aqua_rs_sdk_core::schema::templates::AuditUserTurnMarker;
 use aqua_rs_sdk_core::primitives::RevisionLink;
+use aqua_rs_sdk_core::schema::template::Template;
 
-let tree = aquafier.create_object(
-    RevisionLink::from_bytes(AuditUserTurnMarker::TEMPLATE_LINK),
+// Template body and pinned digest come from your aqua-template-registry
+// subscription store (hash-pinned, publisher allow-listed).
+let turn_marker: Template = serde_json::from_str(&registry_template_json)?;
+let source = aquafier.template_tree(&turn_marker, Some("audit_user_turn_marker"))?;
+
+let tree = aquafier.create_object_validated(
+    RevisionLink::from_bytes(pinned_turn_marker_digest), // from your registry lockfile
     None, // no previous tree, this creates a typed genesis
     serde_json::json!({
         "signer_did": "did:key:z6MkExampleServer",
@@ -134,6 +145,7 @@ let tree = aquafier.create_object(
         "opens_at": 1754500000
     }),
     None,
+    &[source],
 )?;
 ```
 
@@ -159,11 +171,43 @@ individually verifiable artifacts:
 still verify.
 
 The family is rooted at `audit_artifact` and is pure data end to end (JSON
-Schema validation only, no WASM state machines). These 11 templates are the
-first template set published through the companion `aqua-template-registry`
-project. The full SDK currently ships an older, identity-rooted variant of
-the family; core answers those hashes through the unsupported lookup, and
-the planned upstream migration reunifies the two.
+Schema validation only, no WASM state machines).
+
+### Distribution: registry retrieval is required
+
+The 11 audit templates are published as the `audit-set-v1` set of the
+companion
+[`aqua-template-registry`](https://github.com/inblockio/aqua-template-registry)
+project, and the registry is their **only sanctioned distribution channel**.
+They are not part of this crate's built-in template contract. A consumer of
+the agent templates must:
+
+1. retrieve them through a registry subscription — pinned by hash and
+   restricted to an allow-listed publisher DID (the trust model and the
+   publisher identity are defined in the registry README), and
+2. pass the retrieved bodies to this crate as explicit template sources:
+   `create_object_validated` for creation, `export_tree`'s extra sources for
+   export, and `verify_aqua_tree_with_linked_trees` /
+   `verify_tree_sync_with_linked_trees` for verifying trees that do not embed
+   their templates.
+
+Receivers of a self-descriptive export need no registry access: `export_tree`
+(the default, see below) embeds every template the tree uses. Everyone else
+resolves through the registry. A verifier that cannot resolve an audit
+template hash fails closed under the `template_not_found` policy decision,
+and the `missing_templates` lint names the hashes to fetch.
+
+> **Transitional note.** This release still carries in-crate copies of the
+> audit family (they back the compat suite and keep the pre-harmonisation
+> gap to the full SDK measurable), so built-in resolution of these templates
+> still succeeds today. Do not depend on it: it is not part of the supported
+> contract and its removal is tracked as backlog item B11. The machinery and
+> signature templates in the table above are unaffected — those remain
+> built-in.
+
+The full SDK currently ships an older, identity-rooted variant of the
+family; core answers those hashes through the unsupported lookup, and the
+planned upstream migration (backlog section A) reunifies the two.
 
 Run the end-to-end example:
 
@@ -199,9 +243,10 @@ ancestor cannot be resolved it returns the missing hashes and embeds nothing.
 triaging an incoming tree or for publishers in CI.
 
 `include_builtin_templates` also defaults to `true`, because **"built-in" is
-a property of the receiver, not the sender**: this crate's audit templates are
-built-in here and unresolvable in the current full SDK, so a genuinely
-self-descriptive export carries them too. Set it to `false`
+a property of the receiver, not the sender**: the audit templates still
+resolve locally here (a transitional state, see above) while being
+unresolvable in the current full SDK, so a genuinely self-descriptive export
+carries them too. Set it to `false`
 (`ExportOptions::non_builtin_only()`) when the receiver is known to share this
 crate's catalog and the bytes matter. The cost of the default is template JSON
 size per exported tree.
@@ -231,7 +276,9 @@ For a custom, imported, or registry-sourced type it creates the revision
 **unvalidated**, and the mistake surfaces later at the receiver. Use
 `create_object_validated`, which takes explicit template sources and fails
 closed if the template (or an ancestor in its `derives_from` chain) is not
-among them:
+among them. For the agent (audit) templates this is the required creation
+path — with registry-retrieved sources, per the distribution requirement
+above — even while the transitional in-crate copies still resolve:
 
 ```rust,ignore
 let source = aquafier.template_tree(&my_template, Some("my_template"))?;
@@ -265,8 +312,13 @@ parent/
   aqua-rs-sdk-core/  this repo
 ```
 
+It is deliberately **not** a workspace member — membership would make every
+cargo invocation in this repo fail wherever the sibling is absent — so it is
+run by manifest path:
+
 ```
-cargo test --workspace          # unit tests + compat suite
+cargo test                      # unit tests, standalone
+cargo test --manifest-path compat-tests/Cargo.toml   # compat suite (needs the sibling)
 cargo run --features native --bin verify-templates   # template hash cascade check
 ```
 

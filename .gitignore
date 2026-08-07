@@ -1,2 +1,5 @@
 target/
-Cargo.lock
+# The root Cargo.lock IS committed: CI runs every step with --locked and a
+# missing lockfile fails all of them. Only the compat harness's lockfile is
+# untracked, because its dependency tree drifts with the private full SDK.
+compat-tests/Cargo.lock

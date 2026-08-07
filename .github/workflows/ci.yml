@@ -2,9 +2,15 @@
 #
 # Two jobs, because this repo's test suite is split by what it needs:
 #
-#   core    everything that runs from this checkout alone.
-#   compat  the compat-tests crate, which path-depends on a SIBLING checkout
-#           of the full SDK (../aqua-rs-sdk) and therefore has to clone it.
+#   core    everything that runs from this checkout alone. This only works
+#           because compat-tests is NOT a workspace member (see the root
+#           Cargo.toml): as a member, its path dependency on the sibling
+#           full SDK made even `cargo fmt`/`cargo metadata` fail without
+#           that sibling — which is exactly how this job was red on every
+#           run before 2026-08-07.
+#   compat  the compat-tests crate, run by manifest path. It path-depends
+#           on a SIBLING checkout of the full SDK (../aqua-rs-sdk next to
+#           this repo) and therefore has to clone it.
 #
 # NOTE ON THE COMPAT JOB: it needs a checkout of inblockio/aqua-rs-sdk,
 # which is currently PRIVATE. The clone step therefore has three outcomes,
@@ -76,8 +82,8 @@ jobs:
       - name: Build
         run: cargo build --locked --features native --all-targets
 
-      # --workspace is deliberately NOT used here: it would pull in
-      # compat-tests, which needs the sibling full SDK. That is the compat job.
+      # compat-tests is not a workspace member, so this covers exactly the
+      # publishable package. The compat suite is the compat job.
       - name: Unit tests and binaries
         run: cargo test --locked --lib --bins
 
@@ -171,11 +177,14 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            aqua-rs-sdk-core/target
+            aqua-rs-sdk-core/compat-tests/target
           key: ${{ runner.os }}-cargo-compat-${{ hashFiles('aqua-rs-sdk-core/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-compat-
 
-      - name: Full workspace suite (unit tests plus compat)
+      # compat-tests is its own root package (not a workspace member), with
+      # its own untracked lockfile: its dependency tree tracks the private
+      # full SDK, so --locked is deliberately not used here.
+      - name: Compat suite against the sibling full SDK
         if: steps.sdk.outputs.available == 'true'
         working-directory: aqua-rs-sdk-core
-        run: cargo test --workspace
+        run: cargo test --manifest-path compat-tests/Cargo.toml

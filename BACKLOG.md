@@ -176,6 +176,25 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
       hoc extraction. When to run it is documented in the module doc comment
       and in the binary header: every upstream template addition or removal,
       and after A1-A8.
+- [ ] B11. Registry-only distribution for the audit family (decided
+      2026-08-07; README updated first, code follow-up open). The README now
+      requires agent (audit) templates to be retrieved through
+      aqua-template-registry (`audit-set-v1`) and passed as explicit template
+      sources; built-in resolution of the audit family is documented as
+      transitional and not part of the supported contract. Code follow-up:
+      remove the 9 catalog-resolvable audit templates from the built-in
+      verification catalog (the in-crate JSON copies can stay as compat-suite
+      fixtures until A4 lands — the divergence test consumes them), decide
+      what `builtin_template_hashes()` / `shipped_template_hashes()` /
+      `shipped_templates()` return afterwards, move
+      `examples/agent_audit_trail.rs` and `docs/template-authoring.md` to the
+      registry-sourced `create_object_validated` path, and revisit the
+      `include_builtin_templates` export-default discussion once the audit
+      family is no longer built-in. Interop note: removal changes
+      verification outcomes for bare (non-self-descriptive) audit trees —
+      they will fail closed under `template_not_found` unless sources are
+      supplied — so it must land together with the doc updates above, not
+      silently.
 
 ## C. Pointers
 
