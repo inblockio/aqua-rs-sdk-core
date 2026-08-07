@@ -116,6 +116,7 @@ pub(crate) use verify_stages::verify_revision_compute;
 
 pub mod compute;
 pub mod disclosure;
+pub mod export;
 pub mod genesis;
 pub mod link;
 pub mod object;

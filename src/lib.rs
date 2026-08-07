@@ -110,6 +110,9 @@ pub use crate::core::signature::traits::{SignError, Signer};
 // Re-export signing primitives needed by external Signer implementations
 pub use crate::schema::signature::{PreSignature, Signature, SignatureValue};
 
+// Re-export self-descriptive export types for consumers
+pub use crate::core::export::{missing_templates, ExportOptions, ExportTreeError};
+
 // Re-export selective disclosure types for consumers
 pub use crate::core::disclosure::{
     export_selective_tree, redact_revision, verify_redacted_revision, verify_selective_tree,
@@ -528,6 +531,58 @@ impl Aquafier {
     /// are found.
     pub fn resolve_dependency_trees(tree: &schema::tree::Tree) -> Vec<schema::tree::Tree> {
         crate::core::resolve_dependency_trees(tree)
+    }
+
+    /// Export a tree as a **self-descriptive** Aqua tree: embed every template
+    /// it references, plus those templates' full ancestry chains, so the
+    /// result verifies on its own.
+    ///
+    /// This is the primary way to hand a tree to someone else. A typed object
+    /// names its type by hash only, so without the template body a receiver
+    /// cannot validate the payload. Embedding is therefore the **default**
+    /// ([`ExportOptions::default`]); callers opt out explicitly with
+    /// [`ExportOptions::bare`].
+    ///
+    /// Template bodies are resolved in this order:
+    ///
+    /// 1. the tree's own revisions (templates already embedded),
+    /// 2. this crate's built-in catalog,
+    /// 3. `extra_template_sources` — any trees that carry template revisions,
+    ///    for example the portable template trees an import store or registry
+    ///    client hands out. Templates registered on this instance via
+    ///    [`create_template`](Aquafier::create_template) are *not* consulted
+    ///    automatically; pass them here if you want them (their trees come
+    ///    from [`get_available_templates`](Aquafier::get_available_templates)).
+    ///
+    /// Each collected template is inserted under its canonical full multihash
+    /// link (the portable-template pattern of `docs/template-authoring.md`
+    /// section 6). Signature, anchor, and template revisions need no
+    /// resolution — they dispatch on foundation hash constants — so only typed
+    /// object revisions drive the walk.
+    ///
+    /// The input is never mutated, templates already present are left alone,
+    /// and re-exporting an exported tree is a no-op.
+    ///
+    /// # Receiver-relative built-ins
+    ///
+    /// [`ExportOptions::include_builtin_templates`] also defaults to `true`:
+    /// "built-in" describes the receiver, not the sender (this crate's audit
+    /// templates are not resolvable in the current full `aqua-rs-sdk`), so a
+    /// self-descriptive export carries them too.
+    ///
+    /// # Errors
+    ///
+    /// Fails closed with [`ExportTreeError::UnresolvedTemplates`] listing every
+    /// hash that no source could supply. Nothing is embedded in that case: a
+    /// partially self-descriptive tree would overstate what it carries. Use
+    /// [`missing_templates`] to check a tree first.
+    pub fn export_tree(
+        &self,
+        tree: &Tree,
+        extra_template_sources: &[Tree],
+        options: &ExportOptions,
+    ) -> Result<Tree, ExportTreeError> {
+        crate::core::export::export_tree_util(tree, extra_template_sources, options)
     }
 
     /// Verify an Aqua tree synchronously (no async runtime needed).
