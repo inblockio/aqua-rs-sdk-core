@@ -57,3 +57,32 @@ published through aqua-template-registry.
 
 - Full SDK stays untouched; wire shapes of kept machinery unchanged; no new
   runtime dependencies; fail-closed everywhere; no private keys committed.
+
+## Execution record (audit addendum, 2026-08-07)
+
+| ID | Status | Evidence (actually run) |
+|----|--------|--------------------------|
+| E1 | Confirmed | `cargo test --workspace` exit 0: 367 lib + 10 bin + 11 compat + 1 doctest; example exit 0; `verify-templates`: "All 19 templates verified. No drift detected." |
+| E2 | Confirmed | compat `audit_family_divergence_is_intentional`: all 11 pairs hash-differ AND are JSON-identical after removing derives_from/ancestry/descriptions. |
+| E3 | Confirmed | compat `audit_turn_marker_cross_verifies`: core-signed re-rooted T1 tree with embedded T1 + audit_artifact template revisions returns Verified from the full SDK. |
+| E4 | Confirmed | compat `timestamp_seeds_policy_parity`: strict rejects in both crates and core's log names "the timestamping module"; offline verifies-with-warnings in both (core via template_not_found, full SDK via timestamp_unavailable). |
+| E5 | Confirmed | `no_shipped_template_carries_wasm` walks the templates dir; `cargo tree` has zero wasm crates; the lookup carries 53 known full-SDK hashes. |
+| E6 | Confirmed after registry delivery | see the registry repo's audit-set seed + e2e (recorded in its own commits). |
+| E7 | Confirmed | `cargo publish --dry-run` passes; README conformance profile rewritten (zero-WASM claim, unsupported-lookup row). |
+
+New audit hashes are recorded in tests/audit_template_hashes.txt (root
+audit_artifact 0x431668e5...; full list in the ledger).
+
+Process notes (honest record): a mid-round splice truncated
+verify_stages.rs (recovered from git HEAD with edits re-applied and the
+function-set audit repeated), and one commit was pushed with a broken
+test build because a shell pipeline masked the failure; it was fixed and
+amended with force-with-lease within a minute (tip 14aa77d). Both
+mistakes repeat a pattern from round 1: verify with exit codes, never
+with grep counts.
+
+Follow-ups: upstream aqua-rs-sdk migration now covers the re-rooting +
+rename + scrubs in one move; the unsupported lookup should be
+regenerated when upstream's catalog changes (script-assisted, see module
+docs); registry seed set aqua/audit-set-v1 is the distribution channel
+for the new family.
