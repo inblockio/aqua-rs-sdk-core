@@ -38,11 +38,11 @@ One sentence: publish-ready `aqua-rs-sdk-core` crate (anchor/object/template pri
 - B4: `~/aqua-rs-sdk` stays untouched.
 - B5: Hard scope: no policy engine, no daemon, no WASM runtime/bindings, no timestamp creation or providers, no template registry inside core, no templates beyond the closure listed above (structural necessities documented as such).
 - B6: No new dependencies in verification paths; publish metadata must be self-contained (no path deps in [dependencies]).
-- B7: The example never names Gusto or any customer implementation.
+- B7: The example never names the customer product or any customer implementation.
 - B8: Build artifacts on disk (repo target/), never in the tmpfs scratchpad.
 
 ### DECISION DEFAULTS (taken under Tim's end-to-end execution order)
-- D1: `audit_gusto_api_response` (T5) ships byte-identical. Renaming would fork the type identity; a rename is possible later as a deliberate both-SDK migration. The example presents T5 generically as "attested third-party API response".
+- D1 (superseded 2026-08-07 by Tim): T5 ships as `audit_api_response`, renamed from its customer-derived historical identifier, and the customer-derived example strings were scrubbed from the T4 and T5 JSON descriptions. Both hashes deliberately forked before publication; upstream migration of the full SDK to the same definitions is the follow-up that reunifies the type identities.
 - D2: timestamp_base/evm/tsa template JSONs are retained as built-ins for revision classification and structural (batch-inclusion Merkle) verification, matching the full SDK's local behavior. No timestamp creation API, no providers. Documented in the conformance profile.
 - D3: Repo layout: this folder is a workspace: root package `aqua-rs-sdk-core` (publishable) + `compat-tests/` (publish = false, path deps on both SDKs).
 - D4: Feature `native` retained with original semantics; `default = ["native"]` so EIP-191 signing works out of the box.

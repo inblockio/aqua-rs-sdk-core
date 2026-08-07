@@ -293,7 +293,7 @@ mod tests {
                 include_str!("./templates/file.json"),
                 &File::TEMPLATE_LINK,
             ),
-                        (
+            (
                 "timestamp_base",
                 include_str!("./templates/timestamp_base.json"),
                 &TimestampBase::TEMPLATE_LINK,
@@ -303,17 +303,17 @@ mod tests {
                 include_str!("./templates/timestamp_evm.json"),
                 &EvmTimestampPayload::TEMPLATE_LINK,
             ),
-                                                                                                            (
+            (
                 "timestamp_tsa",
                 include_str!("./templates/timestamp_tsa.json"),
                 &TsaTimestampPayload::TEMPLATE_LINK,
             ),
-                        (
+            (
                 "identity_base",
                 include_str!("./templates/identity_base.json"),
                 &IdentityBase::TEMPLATE_LINK,
             ),
-                                                                                                                                                                        (
+            (
                 "signature_eip191",
                 include_str!("./templates/signature_eip191.json"),
                 &SignatureEip191::TEMPLATE_LINK,
@@ -333,7 +333,7 @@ mod tests {
                 include_str!("./templates/signature_webauthn.json"),
                 &SignatureWebauthn::TEMPLATE_LINK,
             ),
-                                            ];
+        ];
 
         for (name, json, expected) in templates {
             let computed = serde_json::from_str::<Template>(json)
@@ -348,7 +348,6 @@ mod tests {
             );
         }
     }
-
 
     /// Prints actual SHA3-256 hashes for timestamp templates.
     ///
@@ -390,12 +389,10 @@ mod tests {
     fn print_all_template_hashes() {
         use crate::verification::Linkable;
 
-        let pairs: &[(&str, &str)] = &[
-            (
-                "identity_base",
-                include_str!("./templates/identity_base.json"),
-            ),
-                                                                                                                                                                                                                    ];
+        let pairs: &[(&str, &str)] = &[(
+            "identity_base",
+            include_str!("./templates/identity_base.json"),
+        )];
 
         for (name, json) in pairs {
             let hash = serde_json::from_str::<Template>(json)

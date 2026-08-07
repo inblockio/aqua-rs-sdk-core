@@ -77,7 +77,7 @@ mod tests {
             signer_did: "did:key:z6MkAgent".to_string(),
             turn_id: format!("0x{}", "ab".repeat(32)),
             seq_in_turn: 4,
-            tool_name: "gusto.employee.create".to_string(),
+            tool_name: "inventory.item.create".to_string(),
             result_payload: serde_json::json!({"employee_id": "emp_42"}),
             success: true,
             created_at: 1747526405,

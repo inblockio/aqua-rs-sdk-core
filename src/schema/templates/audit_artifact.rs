@@ -14,7 +14,7 @@ pub enum AuditArtifactError {
 /// `AuditArtifact` is **NEVER instantiated directly**. It exists solely as the
 /// ancestry terminator for the eight audit templates: `audit_user_turn_marker`
 /// (T1), `audit_user_prompt` (T2), `audit_agent_thinking` (T3),
-/// `audit_agent_tool_call` (T4), `audit_gusto_api_response` (T5),
+/// `audit_agent_tool_call` (T4), `audit_api_response` (T5),
 /// `audit_tool_result` (T6), `audit_hitl_approval` (T7), `audit_agent_response`
 /// (T8).
 ///

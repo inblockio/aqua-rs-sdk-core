@@ -34,7 +34,7 @@ use aqua_rs_sdk_core::schema::templates::{
 // The wire-level type name below is a historical identifier retained for
 // template-hash compatibility; semantically this is the generic template for
 // an attested third-party API response.
-use aqua_rs_sdk_core::schema::templates::AuditGustoApiResponse as AuditApiResponse;
+use aqua_rs_sdk_core::schema::templates::AuditApiResponse;
 use aqua_rs_sdk_core::schema::tree::Tree;
 use aqua_rs_sdk_core::schema::{AnyRevision, AquaTreeWrapper, SigningCredentials, Template};
 use aqua_rs_sdk_core::verification::Linkable;
@@ -97,7 +97,8 @@ async fn attach_and_sign(
         let mut anchor = Anchor::with_links(tip, Method::Scalar, Vec::new(), links);
         let anchor_hash = anchor.calculate_link(HashType::Sha3_256)?;
         anchor.populate_leaves(HashType::Sha3_256)?;
-        tree.revisions.insert(anchor_hash, AnyRevision::Anchor(anchor));
+        tree.revisions
+            .insert(anchor_hash, AnyRevision::Anchor(anchor));
     }
 
     let signed = aquafier
@@ -565,7 +566,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let redacted = redact_revision(t2_revision, &t2_hash, &disclosed_paths)?;
 
-    println!("Redacted T2 revision ({} Merkle leaves):", redacted.leaf_count);
+    println!(
+        "Redacted T2 revision ({} Merkle leaves):",
+        redacted.leaf_count
+    );
     for leaf in &redacted.leaves {
         match leaf {
             RedactedLeaf::Disclosed { path, value, .. } => {

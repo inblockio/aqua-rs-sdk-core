@@ -204,4 +204,3 @@ pub(crate) fn hex_to_bytes(hex_str: &str) -> Result<Vec<u8>, String> {
     }
     Ok(out)
 }
-

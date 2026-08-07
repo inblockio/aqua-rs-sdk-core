@@ -222,8 +222,13 @@ pub async fn verify_aqua_tree_util(
             .as_ref()
             .map(|f| vec![f.clone()])
             .unwrap_or_default();
-        let lt_result =
-            Box::pin(verify_aqua_tree_util(lt, lt_file_objects, &verified_linked, policy)).await?;
+        let lt_result = Box::pin(verify_aqua_tree_util(
+            lt,
+            lt_file_objects,
+            &verified_linked,
+            policy,
+        ))
+        .await?;
 
         let lt_verified = lt_result.is_verified();
         logs.extend(lt_result.logs);

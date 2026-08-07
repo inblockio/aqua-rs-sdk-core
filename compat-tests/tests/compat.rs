@@ -83,8 +83,6 @@ fn template_hash_constants_match() {
     pair!(AuditUserTurnMarker);
     pair!(AuditUserPrompt);
     pair!(AuditAgentThinking);
-    pair!(AuditAgentToolCall);
-    pair!(AuditGustoApiResponse);
     pair!(AuditToolResult);
     pair!(AuditHitlApproval);
     pair!(AuditAgentResponse);
@@ -593,11 +591,66 @@ fn template_files_byte_identical() {
     file_pair!("audit_user_turn_marker.json");
     file_pair!("audit_user_prompt.json");
     file_pair!("audit_agent_thinking.json");
-    file_pair!("audit_agent_tool_call.json");
-    file_pair!("audit_gusto_api_response.json");
     file_pair!("audit_tool_result.json");
     file_pair!("audit_hitl_approval.json");
     file_pair!("audit_agent_response.json");
     file_pair!("audit_round_anchor.json");
     file_pair!("audit_session_close.json");
+}
+
+// ── Deliberate divergence: T4 and T5 forked from the full SDK ───────────
+//
+// 2026-08-07 (Tim): T5 is renamed to audit_api_response and both T4 and
+// T5 JSONs were scrubbed of customer-derived example strings before
+// publication. Template hash = type identity, so these two are new types;
+// this test documents that the divergence is intentional, not drift.
+
+#[test]
+fn t4_t5_divergence_is_intentional() {
+    use core_::schema::template::BuiltInTemplate as C;
+    use full::schema::template::BuiltInTemplate as F;
+
+    assert_ne!(
+        <core_::schema::templates::AuditApiResponse as C>::TEMPLATE_LINK,
+        <full::schema::templates::AuditGustoApiResponse as F>::TEMPLATE_LINK,
+        "T5 was deliberately forked; equal hashes mean the scrub was lost"
+    );
+    assert_ne!(
+        <core_::schema::templates::AuditAgentToolCall as C>::TEMPLATE_LINK,
+        <full::schema::templates::AuditAgentToolCall as F>::TEMPLATE_LINK,
+        "T4 was deliberately forked; equal hashes mean the scrub was lost"
+    );
+
+    // The scrub touched only description example strings: schemas must be
+    // structurally identical apart from descriptions.
+    let scrub = |v: &mut serde_json::Value| {
+        fn walk(v: &mut serde_json::Value) {
+            match v {
+                serde_json::Value::Object(m) => {
+                    m.remove("description");
+                    for (_, x) in m.iter_mut() { walk(x); }
+                }
+                serde_json::Value::Array(a) => a.iter_mut().for_each(walk),
+                _ => {}
+            }
+        }
+        walk(v);
+    };
+    let pairs = [
+        (
+            include_str!("../../src/schema/templates/audit_api_response.json"),
+            include_str!("../../../aqua-rs-sdk/src/schema/templates/audit_gusto_api_response.json"),
+        ),
+        (
+            include_str!("../../src/schema/templates/audit_agent_tool_call.json"),
+            include_str!("../../../aqua-rs-sdk/src/schema/templates/audit_agent_tool_call.json"),
+        ),
+    ];
+    for (core_raw, full_raw) in pairs {
+        let mut c: serde_json::Value = serde_json::from_str(core_raw).unwrap();
+        let mut f: serde_json::Value = serde_json::from_str(full_raw).unwrap();
+        scrub(&mut c);
+        scrub(&mut f);
+        assert_eq!(c, f, "fork must differ ONLY in description strings");
+    }
 }

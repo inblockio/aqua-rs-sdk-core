@@ -23,10 +23,15 @@ service_claim                0xc5efd565e1e464dab865ee30cedba8f90d303967d57676588
 audit_user_turn_marker       0xc55a5e5dbd7f3289db686807d5b86306efd052b53988e739e3a3aac52cdb1282
 audit_user_prompt            0xe47c71a72187c5e0ba119082dd4f440b2dc9b42713121256e3b117e196369ba1
 audit_agent_thinking         0x19fe5ea915a129fda1640afb12e44d1f46a99e3e9941b1477bdcf26664290fb0
-audit_agent_tool_call        0x63f6a40ee6c5fb9a3f93cb6ecfdc917dc5c03896cf88f3379c97c290501966d0
-audit_gusto_api_response     0xb50edaa8c4e7aead8c93256d9d72b7c0e5b1ddb88eda543a76cda43eb1c7b898
+audit_agent_tool_call      0x5c77b0f4050fa7557cacffdd49c99f0fad6a308fc4b1282f880da2db45d009b4
+audit_api_response         0x9c58e4fd02abd784d839e99efda0d22470b2b29ba2aefe899574c26cb56ee93f
 audit_tool_result            0x61eaea9d2af4aee49ab83157dd8d3c3e83e708afb1685aaea11c213b750c24f7
 audit_hitl_approval          0xe85b067151b0687214323eba4e1f2a14a47fb6f45aff827f054d65540dc32981
 audit_agent_response         0xf0c85ab157ba0506e3784f3618f45ecff7b472736bf25fdff6e6057176236a93
 audit_round_anchor           0x4cbc644b366ce1635feabb7233ff8580fc98ddfed4c5d42ca172fd494be64dc7
 audit_session_close          0xb303d7abfb6e1da2688cac658de42fe5ab6c46e5c14871ec2bb045e64916d561
+
+# 2026-08-07: audit_api_response (formerly a customer-named identifier) and
+# audit_agent_tool_call were deliberately forked from the full SDK before
+# publication (description-string scrub; new type identities). All other
+# hashes remain identical to the full SDK.

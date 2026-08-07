@@ -330,8 +330,13 @@ impl Aquafier {
         aqua_tree_wrapper: AquaTreeWrapper,
         file_objects: Vec<FileData>,
     ) -> Result<VerificationResult, MethodError> {
-        verify_aqua_tree_util(&aqua_tree_wrapper, file_objects, &[], &self.verification_policy)
-            .await
+        verify_aqua_tree_util(
+            &aqua_tree_wrapper,
+            file_objects,
+            &[],
+            &self.verification_policy,
+        )
+        .await
     }
 
     /// Verify an Aqua tree with cross-tree dependencies (async).
@@ -556,5 +561,4 @@ impl Aquafier {
             &self.verification_policy,
         )
     }
-
 }

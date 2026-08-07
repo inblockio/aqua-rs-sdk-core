@@ -12,7 +12,7 @@ use crate::primitives::{
 };
 use crate::schema::template::BuiltInTemplate;
 use crate::schema::templates::{
-    AuditAgentResponse, AuditAgentThinking, AuditAgentToolCall, AuditGustoApiResponse,
+    AuditAgentResponse, AuditAgentThinking, AuditAgentToolCall, AuditApiResponse,
     AuditHitlApproval, AuditToolResult, AuditUserPrompt, AuditUserTurnMarker,
 };
 use crate::schema::tree::Tree;
@@ -166,8 +166,8 @@ enum AuditTemplateKind {
     AgentThinking,
     /// T4 — agent tool call.
     AgentToolCall,
-    /// T5 — Gusto API response.
-    GustoApiResponse,
+    /// T5 — attested third-party API response.
+    ApiResponse,
     /// T6 — tool result.
     ToolResult,
     /// T7 — HITL approval.
@@ -194,8 +194,8 @@ fn detect_audit_template(rev: &AnyRevision) -> Option<AuditTemplateKind> {
         Some(AuditTemplateKind::AgentThinking)
     } else if *rt == link(AuditAgentToolCall::TEMPLATE_LINK) {
         Some(AuditTemplateKind::AgentToolCall)
-    } else if *rt == link(AuditGustoApiResponse::TEMPLATE_LINK) {
-        Some(AuditTemplateKind::GustoApiResponse)
+    } else if *rt == link(AuditApiResponse::TEMPLATE_LINK) {
+        Some(AuditTemplateKind::ApiResponse)
     } else if *rt == link(AuditToolResult::TEMPLATE_LINK) {
         Some(AuditTemplateKind::ToolResult)
     } else if *rt == link(AuditHitlApproval::TEMPLATE_LINK) {
@@ -281,7 +281,7 @@ fn pseudonymous_paths_for(kind: AuditTemplateKind, all_paths: &[String]) -> Vec<
 
         // T5: /signer_did, /turn_id, /method, /endpoint, /status_code,
         //     /attested_origin, /created_at, /request_hash
-        AuditTemplateKind::GustoApiResponse => &[
+        AuditTemplateKind::ApiResponse => &[
             "/payloads/signer_did",
             "/payloads/turn_id",
             "/payloads/method",
@@ -636,7 +636,7 @@ impl DisclosureProfile {
             ]),
         );
         rules.insert(
-            link(AuditGustoApiResponse::TEMPLATE_LINK),
+            link(AuditApiResponse::TEMPLATE_LINK),
             disclose(&[
                 "/payloads/signer_did",
                 "/payloads/turn_id",
@@ -1605,9 +1605,8 @@ mod tests {
 
     use crate::primitives::HashType;
     use crate::schema::templates::{
-        AttachedFile, AuditAgentResponse, AuditAgentThinking, AuditAgentToolCall,
-        AuditGustoApiResponse, AuditHitlApproval, AuditToolResult, AuditUserPrompt,
-        AuditUserTurnMarker, HitlDecision,
+        AttachedFile, AuditAgentResponse, AuditAgentThinking, AuditAgentToolCall, AuditApiResponse,
+        AuditHitlApproval, AuditToolResult, AuditUserPrompt, AuditUserTurnMarker, HitlDecision,
     };
 
     /// Build a single-revision Tree containing an `Object` with the given
@@ -1750,7 +1749,7 @@ mod tests {
             signer_did: "did:key:z6MkAgent".to_string(),
             turn_id: format!("0x{}", "ab".repeat(32)),
             seq_in_turn: 2,
-            tool_name: "gusto.employee.create".to_string(),
+            tool_name: "inventory.item.create".to_string(),
             tool_args: serde_json::json!({"secret": "args"}),
             risk_level: "medium".to_string(),
             created_at: 1_747_526_403,
@@ -1784,7 +1783,7 @@ mod tests {
 
     #[test]
     fn pseudonymous_preset_matches_spec_t5() {
-        let payload = AuditGustoApiResponse {
+        let payload = AuditApiResponse {
             signer_did: "did:key:z6MkAttest".to_string(),
             turn_id: format!("0x{}", "ab".repeat(32)),
             seq_in_turn: 3,
@@ -1793,7 +1792,7 @@ mod tests {
             status_code: 201,
             request_hash: format!("0x{}", "cd".repeat(32)),
             response_body: serde_json::json!({"secret": "body"}),
-            attested_origin: "api.gusto-demo.com".to_string(),
+            attested_origin: "api.example-demo.com".to_string(),
             created_at: 1_747_526_404,
         };
         let (tree, hash) = make_audit_tree(payload);
@@ -1827,8 +1826,8 @@ mod tests {
 
     // ── PCA-0018: derivation-aware closed-world disclosure profiles ──────
 
-    fn t5_payload() -> AuditGustoApiResponse {
-        AuditGustoApiResponse {
+    fn t5_payload() -> AuditApiResponse {
+        AuditApiResponse {
             signer_did: "did:key:z6MkAttest".to_string(),
             turn_id: format!("0x{}", "ab".repeat(32)),
             seq_in_turn: 3,
@@ -1837,7 +1836,7 @@ mod tests {
             status_code: 201,
             request_hash: format!("0x{}", "cd".repeat(32)),
             response_body: serde_json::json!({"secret": "body"}),
-            attested_origin: "api.gusto-demo.com".to_string(),
+            attested_origin: "api.example-demo.com".to_string(),
             created_at: 1_747_526_404,
         }
     }
@@ -1886,9 +1885,9 @@ mod tests {
     fn profile_known_full_head_only_discloses_full() {
         let (tree, hash) = make_audit_tree(t5_payload());
         let mut profile = DisclosureProfile::default();
-        profile.known_full.insert(RevisionLink::from_bytes(
-            AuditGustoApiResponse::TEMPLATE_LINK,
-        ));
+        profile
+            .known_full
+            .insert(RevisionLink::from_bytes(AuditApiResponse::TEMPLATE_LINK));
         let policy = DisclosurePolicy::with_profile(&tree, &profile, &[]);
         let selective = export_selective_tree(&tree, &policy).unwrap();
         match selective.revisions.get(&hash) {
@@ -1937,9 +1936,9 @@ mod tests {
     #[test]
     fn profile_derived_template_inherits_family_rule() {
         // The headline leak: a CUSTOM template that derives from T5
-        // (GustoApiResponse) must inherit T5's Disclose rule, not export Full.
+        // (ApiResponse) must inherit T5's Disclose rule, not export Full.
         use crate::verification::Linkable;
-        let t5_link = RevisionLink::from_bytes(AuditGustoApiResponse::TEMPLATE_LINK);
+        let t5_link = RevisionLink::from_bytes(AuditApiResponse::TEMPLATE_LINK);
         let derived = crate::schema::Template::new_derived(
             Method::Tree,
             serde_json::json!({"type": "object"}),
@@ -1975,7 +1974,7 @@ mod tests {
             signer_did: "did:key:z6MkAgent".to_string(),
             turn_id: format!("0x{}", "ab".repeat(32)),
             seq_in_turn: 4,
-            tool_name: "gusto.employee.create".to_string(),
+            tool_name: "inventory.item.create".to_string(),
             result_payload: serde_json::json!({"secret": "result"}),
             success: true,
             created_at: 1_747_526_405,
@@ -2182,7 +2181,7 @@ mod tests {
     #[test]
     fn pseudonymous_preset_passes_verify_selective_tree() {
         // Build a tree with one T5 revision.
-        let payload = AuditGustoApiResponse {
+        let payload = AuditApiResponse {
             signer_did: "did:key:z6MkAttest".to_string(),
             turn_id: format!("0x{}", "ab".repeat(32)),
             seq_in_turn: 1,
@@ -2191,7 +2190,7 @@ mod tests {
             status_code: 200,
             request_hash: format!("0x{}", "cc".repeat(32)),
             response_body: serde_json::json!({"companies": ["acme"]}),
-            attested_origin: "api.gusto-demo.com".to_string(),
+            attested_origin: "api.example-demo.com".to_string(),
             created_at: 1_747_526_404,
         };
         let (tree, _hash) = make_audit_tree(payload);

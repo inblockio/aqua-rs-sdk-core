@@ -25,7 +25,7 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 256,
-        "description": "MCP tool name (e.g. 'gusto.employee.create')"
+        "description": "MCP tool name (e.g. 'inventory.item.create')"
       },
       "tool_args": {
         "description": "Opaque tool arguments (any JSON)"

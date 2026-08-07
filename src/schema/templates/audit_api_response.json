@@ -51,7 +51,7 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 256,
-        "description": "Origin attested by the API attestor (e.g. 'api.gusto.com')"
+        "description": "Origin attested by the API attestor (e.g. 'api.example.com')"
       },
       "created_at": {
         "type": "integer",

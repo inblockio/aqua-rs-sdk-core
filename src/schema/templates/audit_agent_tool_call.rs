@@ -22,7 +22,7 @@ pub enum AuditAgentToolCallError {
 /// target for the `pseudonymous` disclosure preset.
 ///
 /// **Parent of further-derived templates.** T4 is itself a parent for
-/// concrete tool-call templates (e.g. `gusto_employee_create`). The SDK
+/// concrete tool-call templates (e.g. `inventory_item_create`). The SDK
 /// max-depth-4 rule (`src/schema/template.rs`: ancestry max length 3)
 /// accommodates the chain
 /// `audit_artifact → audit_agent_tool_call → <derivative>` with one
@@ -73,9 +73,9 @@ impl BuiltInTemplate for AuditAgentToolCall {
     const TEMPLATE_JSON: &'static str = include_str!("audit_agent_tool_call.json");
     /// Placeholder hash — Task 16 cascades the real value via `verify-templates --fix`.
     const TEMPLATE_LINK: [u8; 32] = [
-        0x63, 0xf6, 0xa4, 0x0e, 0xe6, 0xc5, 0xfb, 0x9a, 0x3f, 0x93, 0xcb, 0x6e, 0xcf, 0xdc, 0x91,
-        0x7d, 0xc5, 0xc0, 0x38, 0x96, 0xcf, 0x88, 0xf3, 0x37, 0x9c, 0x97, 0xc2, 0x90, 0x50, 0x19,
-        0x66, 0xd0,
+        0x5c, 0x77, 0xb0, 0xf4, 0x05, 0x0f, 0xa7, 0x55, 0x7c, 0xac, 0xff, 0xdd, 0x49, 0xc9, 0x9f,
+        0x0f, 0xad, 0x6a, 0x30, 0x8f, 0xc4, 0xb1, 0x28, 0x2f, 0x88, 0x0d, 0xa2, 0xdb, 0x45, 0xd0,
+        0x09, 0xb4,
     ];
 }
 
@@ -88,7 +88,7 @@ mod tests {
             signer_did: "did:key:z6MkAgent".to_string(),
             turn_id: format!("0x{}", "ab".repeat(32)),
             seq_in_turn: 2,
-            tool_name: "gusto.employee.create".to_string(),
+            tool_name: "inventory.item.create".to_string(),
             tool_args: serde_json::json!({"first_name": "Ada", "last_name": "Lovelace"}),
             risk_level: "medium".to_string(),
             created_at: 1747526403,
@@ -308,7 +308,7 @@ mod tests {
     }
 
     /// T4 is itself a parent for further-derived tool-call templates
-    /// (e.g. gusto_employee_create). The SDK max-depth-4 rule
+    /// (e.g. inventory_item_create). The SDK max-depth-4 rule
     /// (`src/schema/template.rs`: ancestry max length 3) requires that
     /// the chain `<derivative> → audit_agent_tool_call → audit_artifact
     /// → identity_base` fit within 3 ancestry entries.

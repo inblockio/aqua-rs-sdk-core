@@ -14,12 +14,9 @@ use crate::{
             verify_reference_existence, verify_timestamps,
         },
         verify_common,
-        verify_stages::{
-            verify_revision_hash, verify_revision_leaves,
-            verify_revision_schema,
-        },
-        DecisionPoint, PolicyVerificationError, PolicyWarning, TemplateTrust,
-        VerificationOutcome, VerificationPolicy, VerificationResult,
+        verify_stages::{verify_revision_hash, verify_revision_leaves, verify_revision_schema},
+        DecisionPoint, PolicyVerificationError, PolicyWarning, TemplateTrust, VerificationOutcome,
+        VerificationPolicy, VerificationResult,
     },
     primitives::{
         log::{LogData, LogType},
@@ -548,9 +545,6 @@ mod tests {
 
     use std::path::PathBuf;
 
-
-
-
     #[test]
     fn aquafier_verify_tree_sync_public_api() {
         let aquafier = Aquafier::new();
@@ -591,7 +585,12 @@ mod tests {
             file_object: Some(file_data.clone()),
             revision: None,
         };
-        let result = verify_aqua_tree_sync(&wrapper, vec![file_data], &[], &VerificationPolicy::strict())
+        let result = verify_aqua_tree_sync(
+            &wrapper,
+            vec![file_data],
+            &[],
+            &VerificationPolicy::strict(),
+        )
         .unwrap();
         assert!(
             result.is_verified(),
@@ -617,7 +616,12 @@ mod tests {
             revision: None,
         };
 
-        let sync_result = verify_aqua_tree_sync(&wrapper, vec![file_data], &[], &VerificationPolicy::strict())
+        let sync_result = verify_aqua_tree_sync(
+            &wrapper,
+            vec![file_data],
+            &[],
+            &VerificationPolicy::strict(),
+        )
         .unwrap();
         assert!(
             sync_result.is_verified(),
@@ -649,7 +653,12 @@ mod tests {
             file_object: Some(file_data.clone()),
             revision: None,
         };
-        let result = verify_aqua_tree_sync(&wrapper, vec![file_data], &[], &VerificationPolicy::strict())
+        let result = verify_aqua_tree_sync(
+            &wrapper,
+            vec![file_data],
+            &[],
+            &VerificationPolicy::strict(),
+        )
         .unwrap();
         assert!(
             !result.is_verified(),

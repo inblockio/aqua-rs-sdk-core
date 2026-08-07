@@ -28,7 +28,7 @@ tree (core tip `git log --oneline | head -1`, registry tip `f5aaf4b`).
 | AC2 | t1-t8 ship with byte-identical hashes | Yes | H2 evidence | H2 |
 | AC3 | Integration tests against the original SDK pass | Yes | 10/10 compat tests | H3-H6 |
 | AC4 | Plug-and-play docs (quick start, build, authoring, conformance profile) | Yes | README.md, docs/template-authoring.md, crate docs | H8 |
-| AC5 | Generic agent-auditability example, no customer naming | Yes | H7 evidence; exactly one occurrence of the string "Gusto" in the example: the aliased wire-type import (accepted deviation D1, unavoidable without forking the type identity) | H7 |
+| AC5 | Generic agent-auditability example, no customer naming | Yes | H7 evidence; exactly zero occurrences of the customer name anywhere in sources after the D1 supersession (see post-audit change below) | H7 |
 | AC6 | Standalone registry with publisher-DID register/subscribe | Yes | H9 evidence; ~/aqua-template-registry, 8 commits, HTTP API + feed subscription + reverse DID indexes | H9 |
 | AC7 | Apache-2.0 publish-ready | Yes | H10 evidence | H10 |
 
@@ -74,7 +74,7 @@ tree (core tip `git log --oneline | head -1`, registry tip `f5aaf4b`).
 
 ## Deviations from the original plan
 
-- D1 accepted: T5 ships as `audit_gusto_api_response` byte-identical; a
+- D1 accepted: T5 ships as the customer-named T5 identifier byte-identical; a
   rename remains possible later as a deliberate both-SDK migration.
 - Inherited clippy lints (14) in files copied verbatim from the original
   are left untouched to keep the diff against upstream reviewable.
@@ -94,3 +94,17 @@ tree (core tip `git log --oneline | head -1`, registry tip `f5aaf4b`).
    `template_tree()` helper.
 4. The registry's plugin-registration template and domain-scoped trust store
    are deferred by design (need WASM or are consumer-side policy).
+
+## Post-audit change (2026-08-07, Tim-directed, before publication)
+
+Tim resolved decision D1 the other way: T5 is renamed to
+`audit_api_response` and the customer-derived example strings were
+scrubbed from the T4 (`audit_agent_tool_call`) and T5 JSON descriptions.
+Both template hashes are deliberately forked from the full SDK (new type
+identities); no shipped template derives from either, so the fork is
+contained. Evidence after the change: `verify-templates` cascade clean
+over all 23 templates; compat suite 11/11 including
+`t4_t5_divergence_is_intentional`, which asserts the fork exists AND that
+the JSONs differ from the full SDK's only in description strings; full
+workspace suites green; example verifies. Follow-up for upstream: migrate
+the full SDK to the same scrubbed definitions to reunify T4/T5.

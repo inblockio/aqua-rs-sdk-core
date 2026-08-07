@@ -134,7 +134,6 @@ mod tests {
         assert_eq!(b.max_total_revisions, 6);
     }
 
-
     #[test]
     fn derived_audit_template_inherits_bounds() {
         use crate::schema::template::BuiltInTemplate;
@@ -172,7 +171,6 @@ mod tests {
         );
         assert_eq!(b.max_total_revisions, 16);
     }
-
 
     #[test]
     fn timestamp_evm_inherits_timestamp_base() {

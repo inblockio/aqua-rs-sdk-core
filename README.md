@@ -139,7 +139,7 @@ individually verifiable artifacts:
 | T2 | `audit_user_prompt` | user session key |
 | T3 | `audit_agent_thinking` | agent key |
 | T4 | `audit_agent_tool_call` | agent key |
-| T5 | attested third-party API response | API attestor key |
+| T5 | `audit_api_response` (attested third-party API response) | API attestor key |
 | T6 | `audit_tool_result` | agent key |
 | T7 | `audit_hitl_approval` | user key (human-in-the-loop decision) |
 | T8 | `audit_agent_response` | agent key (`is_final` closes the turn) |
@@ -179,8 +179,11 @@ cargo test --workspace          # unit tests + compat suite
 cargo run --features native --bin verify-templates   # template hash cascade check
 ```
 
-The suite asserts: identical template hashes and bytes for all 23 shipped
-templates, identical canonicalization output, cross-verification of signed
+The suite asserts: identical template hashes and bytes for 21 of the 23
+shipped templates (T4 and T5 were deliberately forked before publication,
+see docs/plans/2026-08-07-core-extraction-audit.md, and the suite instead
+proves that divergence is exactly the intended description-string scrub),
+identical canonicalization output, cross-verification of signed
 trees in both directions, identical outcomes on deterministic seed fixtures,
 per-policy outcome parity for timestamped trees, and tamper rejection parity.
 

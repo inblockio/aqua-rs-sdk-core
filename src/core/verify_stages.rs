@@ -22,27 +22,24 @@ pub(crate) static BUILTIN_TEMPLATE_NAMES: LazyLock<HashMap<[u8; 32], &'static st
 
         [
             (File::TEMPLATE_LINK, "file"),
-                                                (TimestampBase::TEMPLATE_LINK, "timestamp_base"),
+            (TimestampBase::TEMPLATE_LINK, "timestamp_base"),
             (EvmTimestampPayload::TEMPLATE_LINK, "timestamp_evm"),
-                                                                                    (TsaTimestampPayload::TEMPLATE_LINK, "timestamp_tsa"),
-                                                            (IdentityBase::TEMPLATE_LINK, "identity_base"),
-                                                                                                                                                                        (SignatureEip191::TEMPLATE_LINK, "signature_eip191"),
+            (TsaTimestampPayload::TEMPLATE_LINK, "timestamp_tsa"),
+            (IdentityBase::TEMPLATE_LINK, "identity_base"),
+            (SignatureEip191::TEMPLATE_LINK, "signature_eip191"),
             (SignatureEd25519::TEMPLATE_LINK, "signature_ed25519"),
             (SignatureP256::TEMPLATE_LINK, "signature_p256"),
             (SignatureWebauthn::TEMPLATE_LINK, "signature_webauthn"),
-                                                                        (AuditArtifact::TEMPLATE_LINK, "audit_artifact"),
+            (AuditArtifact::TEMPLATE_LINK, "audit_artifact"),
             (AuditUserTurnMarker::TEMPLATE_LINK, "audit_user_turn_marker"),
             (AuditUserPrompt::TEMPLATE_LINK, "audit_user_prompt"),
             (AuditAgentThinking::TEMPLATE_LINK, "audit_agent_thinking"),
             (AuditAgentToolCall::TEMPLATE_LINK, "audit_agent_tool_call"),
-            (
-                AuditGustoApiResponse::TEMPLATE_LINK,
-                "audit_gusto_api_response",
-            ),
+            (AuditApiResponse::TEMPLATE_LINK, "audit_api_response"),
             (AuditToolResult::TEMPLATE_LINK, "audit_tool_result"),
             (AuditHitlApproval::TEMPLATE_LINK, "audit_hitl_approval"),
             (AuditAgentResponse::TEMPLATE_LINK, "audit_agent_response"),
-                                                                                            ]
+        ]
         .into_iter()
         .collect()
     });
@@ -87,7 +84,7 @@ static BUILTIN_TEMPLATES: LazyLock<HashMap<[u8; 32], Template>> = LazyLock::new(
             File::TEMPLATE_LINK,
             include_str!("../schema/templates/file.json"),
         ),
-                                (
+        (
             TimestampBase::TEMPLATE_LINK,
             include_str!("../schema/templates/timestamp_base.json"),
         ),
@@ -95,15 +92,15 @@ static BUILTIN_TEMPLATES: LazyLock<HashMap<[u8; 32], Template>> = LazyLock::new(
             EvmTimestampPayload::TEMPLATE_LINK,
             include_str!("../schema/templates/timestamp_evm.json"),
         ),
-                                                        (
+        (
             TsaTimestampPayload::TEMPLATE_LINK,
             include_str!("../schema/templates/timestamp_tsa.json"),
         ),
-                                        (
+        (
             IdentityBase::TEMPLATE_LINK,
             include_str!("../schema/templates/identity_base.json"),
         ),
-                                                                                                                (
+        (
             SignatureEip191::TEMPLATE_LINK,
             include_str!("../schema/templates/signature_eip191.json"),
         ),
@@ -119,7 +116,7 @@ static BUILTIN_TEMPLATES: LazyLock<HashMap<[u8; 32], Template>> = LazyLock::new(
             SignatureWebauthn::TEMPLATE_LINK,
             include_str!("../schema/templates/signature_webauthn.json"),
         ),
-                                                (
+        (
             AuditArtifact::TEMPLATE_LINK,
             include_str!("../schema/templates/audit_artifact.json"),
         ),
@@ -140,8 +137,8 @@ static BUILTIN_TEMPLATES: LazyLock<HashMap<[u8; 32], Template>> = LazyLock::new(
             include_str!("../schema/templates/audit_agent_tool_call.json"),
         ),
         (
-            AuditGustoApiResponse::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_gusto_api_response.json"),
+            AuditApiResponse::TEMPLATE_LINK,
+            include_str!("../schema/templates/audit_api_response.json"),
         ),
         (
             AuditToolResult::TEMPLATE_LINK,
@@ -155,7 +152,7 @@ static BUILTIN_TEMPLATES: LazyLock<HashMap<[u8; 32], Template>> = LazyLock::new(
             AuditAgentResponse::TEMPLATE_LINK,
             include_str!("../schema/templates/audit_agent_response.json"),
         ),
-                                                            ];
+    ];
 
     entries
         .iter()
@@ -949,7 +946,6 @@ mod tests {
         assert!(resolve_template(&link, &empty, &[]).is_none());
     }
 
-
     // WS7 amendment A4 (steelman F5): close the latent "forgot the verify_stages
     // array" gap. `verify-templates` scans the templates DIRECTORY and checks each
     // file's hash against its own `.rs` TEMPLATE_LINK, but never consults these two
@@ -1265,7 +1261,6 @@ mod tests {
     }
 
     // ── Compositional monotonicity (spec-object-model §6) ────────────────
-
 
     #[test]
     fn test_identity_base_root_has_no_terminal_states_annotation() {

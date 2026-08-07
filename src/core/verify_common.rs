@@ -181,8 +181,6 @@ pub(crate) fn build_linked_tree_payloads(
 // declared by the timestamp payloads. Runs after schema validation (Stage 2)
 // and before WASM compute (Stage 3).
 
-
-
 /// Verify the Merkle inclusion proof embedded in a timestamp revision's payloads.
 ///
 /// The `target_revision_hash` is the hash of the revision being timestamped
@@ -455,7 +453,6 @@ pub(crate) struct ChainVerification {
     #[allow(dead_code)]
     pub verification: crate::core::compute::TemplateVerification,
 }
-
 
 #[cfg(test)]
 mod tests {

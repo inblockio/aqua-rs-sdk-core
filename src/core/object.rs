@@ -442,7 +442,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn unknown_template_skips_validation() {
         let unknown_hash = RevisionLink::new(vec![0xAA; 32]);
@@ -637,7 +636,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn genesis_file_has_anchor_and_object() {
         use crate::core::genesis::create_genesis_revision;
@@ -705,5 +703,4 @@ mod tests {
         let obj_meta = tip_meta.as_object().unwrap();
         assert_eq!(obj_full.payloads(), obj_meta.payloads());
     }
-
 }

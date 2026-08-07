@@ -2,9 +2,9 @@ use crate::schema::template::BuiltInTemplate;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Validation errors for an `AuditGustoApiResponse` payload.
+/// Validation errors for an `AuditApiResponse` payload.
 #[derive(Debug, Error, PartialEq)]
-pub enum AuditGustoApiResponseError {
+pub enum AuditApiResponseError {
     #[error("signer_did must not be empty")]
     EmptySignerDid,
     #[error("turn_id must not be empty")]
@@ -17,20 +17,20 @@ pub enum AuditGustoApiResponseError {
     EmptyAttestedOrigin,
 }
 
-/// T5 — Gusto API response observation. Signed by an API attestor DID.
+/// T5 — third-party API response observation. Signed by an API attestor DID.
 ///
 /// Spec §7.3, §7.6: T5 records an attested third-party API response
-/// (e.g. Gusto sandbox). Linked to T1 via `turn_id`. The `response_body`
+/// (e.g. a vendor sandbox). Linked to T1 via `turn_id`. The `response_body`
 /// is opaque JSON and is the primary redaction target for the
 /// `pseudonymous` disclosure preset.
 ///
 /// `attested_origin` records the origin the attestor claims to have
-/// observed (e.g. `"api.gusto.com"`). The attestor's signature binds
+/// observed (e.g. `"api.example.com"`). The attestor's signature binds
 /// the observation to the origin.
 ///
-/// Ancestry: `audit_gusto_api_response → audit_artifact → identity_base`.
+/// Ancestry: `audit_api_response → audit_artifact → identity_base`.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct AuditGustoApiResponse {
+pub struct AuditApiResponse {
     pub signer_did: String,
     pub turn_id: String,
     pub seq_in_turn: u64,
@@ -43,22 +43,22 @@ pub struct AuditGustoApiResponse {
     pub created_at: u64,
 }
 
-impl AuditGustoApiResponse {
-    pub fn validate(&self) -> Result<(), AuditGustoApiResponseError> {
+impl AuditApiResponse {
+    pub fn validate(&self) -> Result<(), AuditApiResponseError> {
         if self.signer_did.is_empty() {
-            return Err(AuditGustoApiResponseError::EmptySignerDid);
+            return Err(AuditApiResponseError::EmptySignerDid);
         }
         if self.turn_id.is_empty() {
-            return Err(AuditGustoApiResponseError::EmptyTurnId);
+            return Err(AuditApiResponseError::EmptyTurnId);
         }
         if self.method.is_empty() {
-            return Err(AuditGustoApiResponseError::EmptyMethod);
+            return Err(AuditApiResponseError::EmptyMethod);
         }
         if self.endpoint.is_empty() {
-            return Err(AuditGustoApiResponseError::EmptyEndpoint);
+            return Err(AuditApiResponseError::EmptyEndpoint);
         }
         if self.attested_origin.is_empty() {
-            return Err(AuditGustoApiResponseError::EmptyAttestedOrigin);
+            return Err(AuditApiResponseError::EmptyAttestedOrigin);
         }
         Ok(())
     }
@@ -70,13 +70,13 @@ impl AuditGustoApiResponse {
     }
 }
 
-impl BuiltInTemplate for AuditGustoApiResponse {
-    const TEMPLATE_JSON: &'static str = include_str!("audit_gusto_api_response.json");
+impl BuiltInTemplate for AuditApiResponse {
+    const TEMPLATE_JSON: &'static str = include_str!("audit_api_response.json");
     /// Placeholder hash — Task 16 cascades the real value via `verify-templates --fix`.
     const TEMPLATE_LINK: [u8; 32] = [
-        0xb5, 0x0e, 0xda, 0xa8, 0xc4, 0xe7, 0xae, 0xad, 0x8c, 0x93, 0x25, 0x6d, 0x9d, 0x72, 0xb7,
-        0xc0, 0xe5, 0xb1, 0xdd, 0xb8, 0x8e, 0xda, 0x54, 0x3a, 0x76, 0xcd, 0xa4, 0x3e, 0xb1, 0xc7,
-        0xb8, 0x98,
+        0x9c, 0x58, 0xe4, 0xfd, 0x02, 0xab, 0xd7, 0x84, 0xd8, 0x39, 0xe9, 0x9e, 0xfd, 0xa0, 0xd2,
+        0x24, 0x70, 0xb2, 0xb2, 0x9b, 0xa2, 0xae, 0xfe, 0x89, 0x95, 0x74, 0xc2, 0x6c, 0xb5, 0x6e,
+        0xe9, 0x3f,
     ];
 }
 
@@ -84,8 +84,8 @@ impl BuiltInTemplate for AuditGustoApiResponse {
 mod tests {
     use super::*;
 
-    fn make_response() -> AuditGustoApiResponse {
-        AuditGustoApiResponse {
+    fn make_response() -> AuditApiResponse {
+        AuditApiResponse {
             signer_did: "did:key:z6MkApiAttestor".to_string(),
             turn_id: format!("0x{}", "ab".repeat(32)),
             seq_in_turn: 3,
@@ -94,7 +94,7 @@ mod tests {
             status_code: 201,
             request_hash: format!("0x{}", "cd".repeat(32)),
             response_body: serde_json::json!({"id": "emp_42", "uuid": "abc-def"}),
-            attested_origin: "api.gusto-demo.com".to_string(),
+            attested_origin: "api.example-demo.com".to_string(),
             created_at: 1747526404,
         }
     }
@@ -103,7 +103,7 @@ mod tests {
     fn schema_round_trip() {
         let original = make_response();
         let serialized = serde_json::to_string(&original).expect("serialize");
-        let deserialized: AuditGustoApiResponse =
+        let deserialized: AuditApiResponse =
             serde_json::from_str(&serialized).expect("deserialize");
         assert_eq!(original, deserialized);
         let serialized2 = serde_json::to_string(&deserialized).expect("re-serialize");
@@ -117,53 +117,47 @@ mod tests {
 
     #[test]
     fn validate_rejects_empty_signer_did() {
-        let bad = AuditGustoApiResponse {
+        let bad = AuditApiResponse {
             signer_did: String::new(),
             ..make_response()
         };
-        assert_eq!(
-            bad.validate(),
-            Err(AuditGustoApiResponseError::EmptySignerDid)
-        );
+        assert_eq!(bad.validate(), Err(AuditApiResponseError::EmptySignerDid));
     }
 
     #[test]
     fn validate_rejects_empty_method() {
-        let bad = AuditGustoApiResponse {
+        let bad = AuditApiResponse {
             method: String::new(),
             ..make_response()
         };
-        assert_eq!(bad.validate(), Err(AuditGustoApiResponseError::EmptyMethod));
+        assert_eq!(bad.validate(), Err(AuditApiResponseError::EmptyMethod));
     }
 
     #[test]
     fn validate_rejects_empty_endpoint() {
-        let bad = AuditGustoApiResponse {
+        let bad = AuditApiResponse {
             endpoint: String::new(),
             ..make_response()
         };
-        assert_eq!(
-            bad.validate(),
-            Err(AuditGustoApiResponseError::EmptyEndpoint)
-        );
+        assert_eq!(bad.validate(), Err(AuditApiResponseError::EmptyEndpoint));
     }
 
     #[test]
     fn validate_rejects_empty_attested_origin() {
-        let bad = AuditGustoApiResponse {
+        let bad = AuditApiResponse {
             attested_origin: String::new(),
             ..make_response()
         };
         assert_eq!(
             bad.validate(),
-            Err(AuditGustoApiResponseError::EmptyAttestedOrigin)
+            Err(AuditApiResponseError::EmptyAttestedOrigin)
         );
     }
 
     #[test]
     fn pseudonymous_pointers_match_spec() {
         assert_eq!(
-            AuditGustoApiResponse::pseudonymous_redaction_pointers(),
+            AuditApiResponse::pseudonymous_redaction_pointers(),
             &["/response_body"]
         );
     }
@@ -171,8 +165,7 @@ mod tests {
     #[test]
     fn ancestry_via_template_json() {
         let template: serde_json::Value =
-            serde_json::from_str(AuditGustoApiResponse::TEMPLATE_JSON)
-                .expect("parse TEMPLATE_JSON");
+            serde_json::from_str(AuditApiResponse::TEMPLATE_JSON).expect("parse TEMPLATE_JSON");
 
         let parent_hash = "0x1620111d65c253f72bc4e2b69ede969b26785dc5e54bd6b2906d79887232be242665";
         let identity_base_hash =
