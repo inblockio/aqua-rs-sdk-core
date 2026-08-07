@@ -1,0 +1,125 @@
+# CI for aqua-rs-sdk-core (backlog B7).
+#
+# Two jobs, because this repo's test suite is split by what it needs:
+#
+#   core    everything that runs from this checkout alone.
+#   compat  the compat-tests crate, which path-depends on a SIBLING checkout
+#           of the full SDK (../aqua-rs-sdk) and therefore has to clone it.
+#
+# NOTE ON THE COMPAT JOB: it clones https://github.com/inblockio/aqua-rs-sdk
+# over HTTPS with no credentials, so it requires that repository to be
+# PUBLIC. While it is private, this job fails at the clone step. That is
+# deliberate and visible: a compat job that silently skipped itself would be
+# the "green because uncovered" failure this project has already been bitten
+# by once. To run CI without it, either give the job a token with read access
+# to that repo (replace the clone step with actions/checkout and a PAT), or
+# mark the job `continue-on-error: true` while the situation lasts.
+#
+# Every command below is also the local verification list. Run them in this
+# order from a clean checkout and CI should agree with you.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail on warnings only where the baseline is clean (see the clippy step).
+  RUST_BACKTRACE: 1
+
+jobs:
+  core:
+    name: build, test, lint (standalone)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the stable toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+          rustc --version && cargo --version
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # Formatting is checked for this package only. compat-tests carries
+      # formatting drift inherited from the extraction; reformatting it would
+      # be unrelated churn in the file that proves subset compatibility.
+      - name: Check formatting
+        run: cargo fmt -p aqua-rs-sdk-core --check
+
+      - name: Build
+        run: cargo build --locked --features native --all-targets
+
+      # --workspace is deliberately NOT used here: it would pull in
+      # compat-tests, which needs the sibling full SDK. That is the compat job.
+      - name: Unit tests and binaries
+        run: cargo test --locked --lib --bins
+
+      - name: Doc tests
+        run: cargo test --locked --doc
+
+      # The lib carries 14 inherited warnings in files copied verbatim from the
+      # full SDK; fixing them there would fork files that are meant to stay
+      # byte-comparable. So the gate is the correctness group (real bugs),
+      # not the total warning count, which would break on every new lint.
+      - name: Clippy (deny correctness)
+        run: cargo clippy --locked --lib --features native -- -D clippy::correctness
+
+      - name: Rustdoc builds
+        run: cargo doc --locked --no-deps --features native
+
+      # Template hash = type identity. This is the drift alarm.
+      - name: Template hash cascade
+        run: cargo run --locked --features native --bin verify-templates
+
+      - name: End-to-end example
+        run: cargo run --locked --example agent_audit_trail --features native
+
+      - name: Packaging (publish dry run)
+        run: cargo publish --locked --dry-run
+
+  compat:
+    name: subset compatibility with the full SDK
+    runs-on: ubuntu-latest
+    steps:
+      # Both repos land as siblings under the workspace directory, which is
+      # what compat-tests/Cargo.toml's `path = "../aqua-rs-sdk"` expects.
+      - uses: actions/checkout@v4
+        with:
+          path: aqua-rs-sdk-core
+
+      - name: Clone the full SDK as a sibling checkout
+        run: git clone --depth 1 https://github.com/inblockio/aqua-rs-sdk.git aqua-rs-sdk
+
+      - name: Install the stable toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version && cargo --version
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            aqua-rs-sdk-core/target
+          key: ${{ runner.os }}-cargo-compat-${{ hashFiles('aqua-rs-sdk-core/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-compat-
+
+      - name: Full workspace suite (unit tests plus compat)
+        working-directory: aqua-rs-sdk-core
+        run: cargo test --workspace
