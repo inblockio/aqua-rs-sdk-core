@@ -21,13 +21,13 @@
 use std::sync::LazyLock;
 
 use super::hash_type::{multihash_decode, multihash_encode};
+use super::unsupported::{TIMESTAMP_BASE_DIGEST, TIMESTAMP_EVM_DIGEST, TIMESTAMP_TSA_DIGEST};
 use super::{HashType, RevisionLink};
 use crate::schema::template::BuiltInTemplate;
 use crate::schema::templates::{
     AnchorTemplate, SignatureBase, SignatureEd25519, SignatureEip191, SignatureP256,
-    SignatureWebauthn, TemplateMeta, TimestampBase,
+    SignatureWebauthn, TemplateMeta,
 };
-use crate::schema::templates::{EvmTimestampPayload, TsaTimestampPayload};
 
 /// Classification of a `revision_type` value.
 ///
@@ -163,9 +163,9 @@ static SIGNATURE_FOUNDATION_HASHES: LazyLock<std::collections::HashSet<Vec<u8>>>
 static TIMESTAMP_FOUNDATION_HASHES: LazyLock<std::collections::HashSet<Vec<u8>>> =
     LazyLock::new(|| {
         [
-            TimestampBase::TEMPLATE_LINK,
-            EvmTimestampPayload::TEMPLATE_LINK,
-            TsaTimestampPayload::TEMPLATE_LINK,
+            TIMESTAMP_BASE_DIGEST,
+            TIMESTAMP_EVM_DIGEST,
+            TIMESTAMP_TSA_DIGEST,
         ]
         .iter()
         .map(template_id_multihash)
@@ -258,9 +258,9 @@ mod tests {
         let sig_eip = mh(&SignatureEip191::TEMPLATE_LINK);
         let sig_p256 = mh(&SignatureP256::TEMPLATE_LINK);
         let sig_wa = mh(&SignatureWebauthn::TEMPLATE_LINK);
-        let ts_base = mh(&TimestampBase::TEMPLATE_LINK);
-        let ts_evm = mh(&EvmTimestampPayload::TEMPLATE_LINK);
-        let ts_tsa = mh(&TsaTimestampPayload::TEMPLATE_LINK);
+        let ts_base = mh(&TIMESTAMP_BASE_DIGEST);
+        let ts_evm = mh(&TIMESTAMP_EVM_DIGEST);
+        let ts_tsa = mh(&TIMESTAMP_TSA_DIGEST);
 
         assert_eq!(resolve_revision_kind(&anchor), RevisionKind::Anchor);
         assert_eq!(resolve_revision_kind(&tmpl), RevisionKind::Template);

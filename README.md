@@ -33,7 +33,7 @@ audit template family.
 | Primitives | revision links, multihash (SHA3-256, BLAKE3-256), canonicalization, Merkle trees, DID encoding (`did:key`, `did:pkh`) |
 | Revisions | genesis, typed objects, templates, anchors (tree linking), signatures |
 | Signatures | Ed25519 (`did:key`), EIP-191 secp256k1 (`did:pkh`), P-256, WebAuthn (verification) |
-| Templates | template machinery (`template_meta`, `anchor_template`, `identity_base`, `file`), the base signature templates, and the eleven audit templates (t1-t8 plus `audit_artifact`, `audit_round_anchor`, `audit_session_close`) |
+| Templates | template machinery (`template_meta`, `anchor_template`, `file`), the base signature templates, and the eleven audit templates (t1-t8 plus `audit_artifact`, `audit_round_anchor`, `audit_session_close`), all data-only: **this crate ships zero WASM bytes** |
 | Verification | the full L1-L3 pipeline (structure, hashes, schemas, signatures, cross-tree links), async and sync, governed by a configurable `VerificationPolicy` |
 | Disclosure | selective disclosure and redaction, including the `pseudonymous` preset for audit artifacts |
 
@@ -44,9 +44,9 @@ the behavior is explicit, and never silently permissive:
 
 | Excluded | Behavior in core |
 |---|---|
-| WASM compute execution | Built-in templates that carry WASM verification (`identity_base`, `timestamp_evm`, `timestamp_tsa`) are **skipped with an explicit log line**; structural, hash, schema, and signature verification are unchanged. The compat suite proves pass/fail parity with the full SDK. |
-| Custom WASM templates | Any non-built-in template carrying a `verification` section is **rejected** with `COMPUTE_UNSUPPORTED`. Core cannot evaluate vendor trust for WASM and refuses to guess. Verify such trees with the full SDK. |
-| Timestamping | No timestamp creation, no TSA or EVM providers. Timestamp revisions in incoming trees are still classified and structurally verified (including the batch-inclusion Merkle proof), but the attestation itself is routed through the `timestamp_unavailable` policy decision: `VerificationPolicy::strict()` rejects it, `VerificationPolicy::offline()` tolerates it with a warning. This matches the hostless full SDK exactly. |
+| WASM compute execution | No shipped template carries WASM (enforced by a unit test). Any template whose chain carries a `verification` section is **rejected** with `COMPUTE_UNSUPPORTED`: core has no WASM runtime and refuses to guess. Verify such trees with the full SDK. |
+| Known full-SDK templates | Every template hash the full SDK publishes but core does not ship (timestamps, the identity family, claims, policy, registration, manifest, the identity-rooted audit variants) is in a built-in lookup; a resolution miss answers with an explicit "not supported for verification by aqua-rs-sdk-core: it depends on <module>" message, governed by the `template_not_found` policy decision. |
+| Timestamping | No timestamp creation, no TSA or EVM providers, and the timestamp templates are not shipped. Timestamp revisions in incoming trees are still classified (`RevisionKind::Timestamp`), and their templates answer through the unsupported lookup above: `strict()` rejects, `offline()` tolerates with a warning. The hostless full SDK reaches the same outcomes through its `timestamp_unavailable` decision, and the compat suite proves the parity. |
 | Policy engine | Not included. (The `VerificationPolicy` decision points listed above are part of the verification pipeline, not the policy engine.) |
 | Daemon / forest runtime | Not included. |
 | Template registry | Not included by design. See the separate `aqua-template-registry` project for registering and subscribing to templates by publisher DID. |
@@ -149,6 +149,13 @@ individually verifiable artifacts:
 `pseudonymous` disclosure preset lets you share redacted audit trails that
 still verify.
 
+The family is rooted at `audit_artifact` and is pure data end to end (JSON
+Schema validation only, no WASM state machines). These 11 templates are the
+first template set published through the companion `aqua-template-registry`
+project. The full SDK currently ships an older, identity-rooted variant of
+the family; core answers those hashes through the unsupported lookup, and
+the planned upstream migration reunifies the two.
+
 Run the end-to-end example:
 
 ```
@@ -179,11 +186,12 @@ cargo test --workspace          # unit tests + compat suite
 cargo run --features native --bin verify-templates   # template hash cascade check
 ```
 
-The suite asserts: identical template hashes and bytes for 21 of the 23
-shipped templates (T4 and T5 were deliberately forked before publication,
-see docs/plans/2026-08-07-core-extraction-audit.md, and the suite instead
-proves that divergence is exactly the intended description-string scrub),
-identical canonicalization output, cross-verification of signed
+The suite asserts: identical template hashes and bytes for the 8 shared
+machinery and signature templates, a deliberately bounded fork for the 11
+audit templates (hashes differ, and the JSONs differ from the full SDK's
+only in ancestry linkage and description strings, enforced by
+`audit_family_divergence_is_intentional`), identical canonicalization
+output, cross-verification of signed
 trees in both directions, identical outcomes on deterministic seed fixtures,
 per-policy outcome parity for timestamped trees, and tamper rejection parity.
 

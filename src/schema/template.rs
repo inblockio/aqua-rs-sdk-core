@@ -15,8 +15,6 @@ use serde::{Deserialize, Serialize};
 pub struct Template {
     #[serde(skip_serializing_if = "Option::is_none")]
     previous_revision: Option<RevisionLink>,
-    /// Full multihash of the template-template (`template_meta`), or the
-    /// genesis bootstrap value when this IS `template_meta` (AD-21).
     revision_type: RevisionLink,
     nonce: Nonce,
     local_timestamp: Timestamp,
@@ -294,26 +292,6 @@ mod tests {
                 &File::TEMPLATE_LINK,
             ),
             (
-                "timestamp_base",
-                include_str!("./templates/timestamp_base.json"),
-                &TimestampBase::TEMPLATE_LINK,
-            ),
-            (
-                "timestamp_evm",
-                include_str!("./templates/timestamp_evm.json"),
-                &EvmTimestampPayload::TEMPLATE_LINK,
-            ),
-            (
-                "timestamp_tsa",
-                include_str!("./templates/timestamp_tsa.json"),
-                &TsaTimestampPayload::TEMPLATE_LINK,
-            ),
-            (
-                "identity_base",
-                include_str!("./templates/identity_base.json"),
-                &IdentityBase::TEMPLATE_LINK,
-            ),
-            (
                 "signature_eip191",
                 include_str!("./templates/signature_eip191.json"),
                 &SignatureEip191::TEMPLATE_LINK,
@@ -357,20 +335,7 @@ mod tests {
     fn print_timestamp_template_hashes() {
         use crate::verification::Linkable;
 
-        let pairs: &[(&str, &str)] = &[
-            (
-                "timestamp_base",
-                include_str!("./templates/timestamp_base.json"),
-            ),
-            (
-                "timestamp_evm",
-                include_str!("./templates/timestamp_evm.json"),
-            ),
-            (
-                "timestamp_tsa",
-                include_str!("./templates/timestamp_tsa.json"),
-            ),
-        ];
+        let pairs: &[(&str, &str)] = &[];
 
         for (name, json) in pairs {
             let hash = serde_json::from_str::<Template>(json)
@@ -379,28 +344,6 @@ mod tests {
                 .unwrap();
             let hex = hex::encode(hash.as_ref());
             println!("{name}: 0x{hex}");
-            println!("  bytes: {:?}", hash.as_ref());
-        }
-    }
-
-    /// Print ALL template hashes.
-    /// Run with: `cargo test print_all_template_hashes -- --nocapture`
-    #[test]
-    fn print_all_template_hashes() {
-        use crate::verification::Linkable;
-
-        let pairs: &[(&str, &str)] = &[(
-            "identity_base",
-            include_str!("./templates/identity_base.json"),
-        )];
-
-        for (name, json) in pairs {
-            let hash = serde_json::from_str::<Template>(json)
-                .unwrap()
-                .calculate_link(HashType::Sha3_256)
-                .unwrap();
-            let hex_str = hex::encode(hash.as_ref());
-            println!("{name}: 0x{hex_str}");
             println!("  bytes: {:?}", hash.as_ref());
         }
     }

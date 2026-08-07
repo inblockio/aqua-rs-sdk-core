@@ -36,9 +36,5 @@
     "max_timestamp_branches": 4,
     "max_anchor_branches": 4,
     "max_total_revisions": 16
-  },
-  "derives_from": "0x1620812b61a5906095bc375273813918e994555e1f386595c0187438c00435b107b4",
-  "ancestry": [
-    "0x1620812b61a5906095bc375273813918e994555e1f386595c0187438c00435b107b4"
-  ]
+  }
 }

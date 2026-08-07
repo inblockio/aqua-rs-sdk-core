@@ -125,16 +125,6 @@ mod tests {
     }
 
     #[test]
-    fn identity_base_has_declared_bounds() {
-        use crate::schema::template::BuiltInTemplate;
-        use crate::schema::templates::IdentityBase;
-        let b = resolve_bounds(&IdentityBase::TEMPLATE_LINK);
-        assert_eq!(b.max_chain_depth, 2);
-        assert_eq!(b.max_signature_branches, 1);
-        assert_eq!(b.max_total_revisions, 6);
-    }
-
-    #[test]
     fn derived_audit_template_inherits_bounds() {
         use crate::schema::template::BuiltInTemplate;
         use crate::schema::templates::AuditUserPrompt;
@@ -170,15 +160,6 @@ mod tests {
             "T1 must inherit audit_artifact bounds, not identity_base's 0"
         );
         assert_eq!(b.max_total_revisions, 16);
-    }
-
-    #[test]
-    fn timestamp_evm_inherits_timestamp_base() {
-        use crate::schema::template::BuiltInTemplate;
-        use crate::schema::templates::EvmTimestampPayload;
-        let b = resolve_bounds(&EvmTimestampPayload::TEMPLATE_LINK);
-        assert_eq!(b.max_chain_depth, 1);
-        assert_eq!(b.max_total_revisions, 1);
     }
 
     #[test]

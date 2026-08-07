@@ -46,9 +46,9 @@ impl BuiltInTemplate for AuditUserTurnMarker {
     const TEMPLATE_JSON: &'static str = include_str!("audit_user_turn_marker.json");
     /// Placeholder hash — Task 16 cascades the real value via `verify-templates --fix`.
     const TEMPLATE_LINK: [u8; 32] = [
-        0xc5, 0x5a, 0x5e, 0x5d, 0xbd, 0x7f, 0x32, 0x89, 0xdb, 0x68, 0x68, 0x07, 0xd5, 0xb8, 0x63,
-        0x06, 0xef, 0xd0, 0x52, 0xb5, 0x39, 0x88, 0xe7, 0x39, 0xe3, 0xa3, 0xaa, 0xc5, 0x2c, 0xdb,
-        0x12, 0x82,
+        0x9b, 0xf3, 0x89, 0x92, 0xcb, 0x2c, 0xc1, 0x23, 0x0e, 0xdb, 0x65, 0x39, 0xa9, 0x8e, 0x6d,
+        0x3c, 0x88, 0x9c, 0x69, 0xaa, 0x09, 0xb1, 0x76, 0x4a, 0x4b, 0x91, 0xb3, 0x0c, 0xb6, 0xa3,
+        0x69, 0x90,
     ];
 }
 
@@ -112,10 +112,7 @@ mod tests {
         let template: serde_json::Value =
             serde_json::from_str(AuditUserTurnMarker::TEMPLATE_JSON).expect("parse TEMPLATE_JSON");
 
-        let parent_hash = "0x1620111d65c253f72bc4e2b69ede969b26785dc5e54bd6b2906d79887232be242665";
-        let identity_base_hash =
-            "0x1620812b61a5906095bc375273813918e994555e1f386595c0187438c00435b107b4";
-
+        let parent_hash = "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3";
         assert_eq!(
             template["derives_from"]
                 .as_str()
@@ -127,16 +124,11 @@ mod tests {
         let ancestry = template["ancestry"]
             .as_array()
             .expect("ancestry is an array");
-        assert_eq!(ancestry.len(), 2, "ancestry must have exactly 2 entries");
+        assert_eq!(ancestry.len(), 1, "ancestry must have exactly 1 entry");
         assert_eq!(
             ancestry[0].as_str().unwrap(),
-            identity_base_hash,
-            "ancestry[0] must be identity_base real hash"
-        );
-        assert_eq!(
-            ancestry[1].as_str().unwrap(),
             parent_hash,
-            "ancestry[1] must be audit_artifact real hash"
+            "ancestry[0] must be audit_artifact real hash"
         );
     }
 }

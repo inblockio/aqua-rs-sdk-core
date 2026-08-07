@@ -154,30 +154,6 @@ impl AnyRevision {
         }
     }
 
-    /// Returns `true` if this is a typed object using a timestamp template (EVM or TSA).
-    pub fn is_timestamp_object(&self) -> bool {
-        match self {
-            AnyRevision::Typed(obj) => {
-                use crate::schema::template::BuiltInTemplate;
-                use crate::schema::templates::{EvmTimestampPayload, TsaTimestampPayload};
-                let rt = obj.revision_type();
-                *rt == RevisionLink::from_bytes(EvmTimestampPayload::TEMPLATE_LINK)
-                    || *rt == RevisionLink::from_bytes(TsaTimestampPayload::TEMPLATE_LINK)
-            }
-            _ => false,
-        }
-    }
-
-    /// Extract the EVM timestamp payload, if this is a timestamp object.
-    pub fn as_timestamp_payload(&self) -> Option<templates::EvmTimestampPayload> {
-        match self {
-            AnyRevision::Typed(obj) if self.is_timestamp_object() => {
-                serde_json::from_value(obj.payloads().clone()).ok()
-            }
-            _ => None,
-        }
-    }
-
     /// Compute the cryptographic hash of this revision (its `RevisionLink`)
     /// under `hash_type`. The algorithm is supplied by the caller — at
     /// verification, decode it from the addressing multihash via

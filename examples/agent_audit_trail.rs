@@ -531,14 +531,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     println!();
 
+    // The re-rooted audit family is pure data: no template in the chain
+    // carries WASM, so the compute stage is never involved. If a skip note
+    // ever appears here, a WASM-carrying template sneaked into the chain.
     if any_compute_skip {
-        println!("Note on the \"Compute verification skipped\" entries above:");
-        println!("  every audit template derives from identity_base, whose WASM state");
-        println!("  machine aqua-rs-sdk-core does not execute (core ships no WASM");
-        println!("  runtime). The full aqua-rs-sdk executes it; the compat-tests suite");
-        println!("  proves both implementations reach the same verification outcome.");
-        println!();
+        return Err("unexpected compute involvement in the audit chain".into());
     }
+    println!("The audit chain is pure data: no WASM anywhere, nothing skipped,");
+    println!("every check above ran to completion inside aqua-rs-sdk-core.");
+    println!();
 
     if !all_verified {
         return Err("at least one artifact failed verification".into());

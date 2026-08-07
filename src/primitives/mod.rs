@@ -12,6 +12,7 @@ pub mod did_key;
 pub mod log;
 pub mod merkle;
 pub mod revision_kind;
+pub mod unsupported;
 
 pub use did::{Did, DidError};
 pub use did_key::{DidKeyError, KeyAlgorithm};

@@ -74,20 +74,11 @@ fn template_hash_constants_match() {
     pair!(SignatureEip191);
     pair!(SignatureP256);
     pair!(SignatureWebauthn);
-    pair!(IdentityBase);
     pair!(File);
-    pair!(TimestampBase);
-    pair!(EvmTimestampPayload);
-    pair!(TsaTimestampPayload);
-    pair!(AuditArtifact);
-    pair!(AuditUserTurnMarker);
-    pair!(AuditUserPrompt);
-    pair!(AuditAgentThinking);
-    pair!(AuditToolResult);
-    pair!(AuditHitlApproval);
-    pair!(AuditAgentResponse);
-    pair!(AuditRoundAnchor);
-    pair!(AuditSessionClose);
+    // The audit family, identity_base, and the timestamp templates are NOT
+    // compared: the audit templates are the deliberately re-rooted variants
+    // (see audit_family_divergence_is_intentional) and identity_base plus
+    // the timestamp templates left core entirely (unsupported-lookup, E-D2).
 }
 
 // ── H3: canonicalization parity on identical input ──────────────────────
@@ -242,8 +233,8 @@ async fn audit_turn_marker_cross_verifies() {
         .await
         .unwrap();
 
-    // Core: identity_base's WASM ancestry is skipped with an explicit log
-    // (D7); everything else verifies fully.
+    // Core: the re-rooted audit chain is pure data (no WASM anywhere), so
+    // verification runs with no compute involvement at all.
     let core_result = aq
         .verify_aqua_tree(
             core_::schema::AquaTreeWrapper::new(signed.aqua_tree.clone(), None, None),
@@ -257,15 +248,31 @@ async fn audit_turn_marker_cross_verifies() {
         core_result.logs
     );
     assert!(
-        core_result
+        !core_result
             .logs
             .iter()
             .any(|l| l.log.contains("Compute verification skipped")),
-        "core must log the explicit compute skip for the identity_base chain"
+        "re-rooted audit chain must not involve the compute stage at all"
     );
 
-    // Full SDK: identity_base's WASM actually executes (DefaultIdentityHost).
-    let full_tree = core_tree_to_full(&signed.aqua_tree);
+    // Full SDK: core's re-rooted templates are not full-SDK built-ins, so
+    // ship them with the tree (the portable-template pattern): embed the T1
+    // and audit_artifact template revisions under their multihash links.
+    let mut portable = signed.aqua_tree.clone();
+    for json in [
+        <core_::schema::templates::AuditUserTurnMarker as BuiltInTemplate>::TEMPLATE_JSON,
+        <core_::schema::templates::AuditArtifact as BuiltInTemplate>::TEMPLATE_JSON,
+    ] {
+        use core_::verification::Linkable;
+        let t: core_::schema::Template = serde_json::from_str(json).unwrap();
+        let link = t
+            .calculate_link(core_::primitives::HashType::Sha3_256)
+            .unwrap();
+        portable
+            .revisions
+            .insert(link, core_::schema::AnyRevision::Template(t));
+    }
+    let full_tree = core_tree_to_full(&portable);
     let full_result = full::Aquafier::new()
         .verify_aqua_tree(
             full::schema::AquaTreeWrapper::new(full_tree, None, None),
@@ -275,8 +282,8 @@ async fn audit_turn_marker_cross_verifies() {
         .unwrap();
     assert!(
         full_result.is_verified(),
-        "core-signed t1 audit tree must verify in the full SDK \
-         (WASM executed there): {:?}",
+        "core-signed re-rooted t1 audit tree must verify in the full SDK \
+         via the portable-template pattern: {:?}",
         full_result.logs
     );
 }
@@ -401,6 +408,15 @@ async fn timestamp_seeds_policy_parity() {
              attestation: {:?}",
             core_strict.logs
         );
+        assert!(
+            core_strict.logs.iter().any(|l| l
+                .log
+                .contains("is not supported for verification by aqua-rs-sdk-core")
+                && l.log.contains("the timestamping module")),
+            "{name}: core must explain WHICH module the unsupported template \
+             needs: {:?}",
+            core_strict.logs
+        );
 
         // Offline policy tolerates the unavailable attestation with a warning
         // in both implementations.
@@ -506,7 +522,7 @@ async fn custom_wasm_template_rejected_fail_closed() {
     )
     .unwrap();
     let identity_base: serde_json::Value = serde_json::from_str(include_str!(
-        "../../src/schema/templates/identity_base.json"
+        "../../../aqua-rs-sdk/src/schema/templates/identity_base.json"
     ))
     .unwrap();
     tmpl_json["verification"] = identity_base["verification"].clone();
@@ -582,75 +598,75 @@ fn template_files_byte_identical() {
     file_pair!("signature_eip191.json");
     file_pair!("signature_p256.json");
     file_pair!("signature_webauthn.json");
-    file_pair!("identity_base.json");
     file_pair!("file.json");
-    file_pair!("timestamp_base.json");
-    file_pair!("timestamp_evm.json");
-    file_pair!("timestamp_tsa.json");
-    file_pair!("audit_artifact.json");
-    file_pair!("audit_user_turn_marker.json");
-    file_pair!("audit_user_prompt.json");
-    file_pair!("audit_agent_thinking.json");
-    file_pair!("audit_tool_result.json");
-    file_pair!("audit_hitl_approval.json");
-    file_pair!("audit_agent_response.json");
-    file_pair!("audit_round_anchor.json");
-    file_pair!("audit_session_close.json");
 }
 
-// ── Deliberate divergence: T4 and T5 forked from the full SDK ───────────
+// ── Deliberate divergence: the audit family forked from the full SDK ────
 //
-// 2026-08-07 (Tim): T5 is renamed to audit_api_response and both T4 and
-// T5 JSONs were scrubbed of customer-derived example strings before
-// publication. Template hash = type identity, so these two are new types;
-// this test documents that the divergence is intentional, not drift.
+// 2026-08-07 (Tim): the audit family was re-rooted at audit_artifact
+// (identity_base removed from ancestry), T5 was renamed to
+// audit_api_response, and customer-derived example strings were scrubbed
+// from the T4/T5 descriptions. Template hash = type identity, so all 11
+// audit templates are new types. This test documents that the divergence
+// is intentional and exactly bounded: hashes differ, and the JSONs differ
+// from the full SDK's ONLY in derives_from/ancestry and descriptions.
 
 #[test]
-fn t4_t5_divergence_is_intentional() {
-    use core_::schema::template::BuiltInTemplate as C;
-    use full::schema::template::BuiltInTemplate as F;
+fn audit_family_divergence_is_intentional() {
+    use core_::verification::Linkable;
 
-    assert_ne!(
-        <core_::schema::templates::AuditApiResponse as C>::TEMPLATE_LINK,
-        <full::schema::templates::AuditGustoApiResponse as F>::TEMPLATE_LINK,
-        "T5 was deliberately forked; equal hashes mean the scrub was lost"
-    );
-    assert_ne!(
-        <core_::schema::templates::AuditAgentToolCall as C>::TEMPLATE_LINK,
-        <full::schema::templates::AuditAgentToolCall as F>::TEMPLATE_LINK,
-        "T4 was deliberately forked; equal hashes mean the scrub was lost"
-    );
-
-    // The scrub touched only description example strings: schemas must be
-    // structurally identical apart from descriptions.
-    let scrub = |v: &mut serde_json::Value| {
-        fn walk(v: &mut serde_json::Value) {
-            match v {
-                serde_json::Value::Object(m) => {
-                    m.remove("description");
-                    for (_, x) in m.iter_mut() { walk(x); }
+    fn scrub(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(m) => {
+                m.remove("description");
+                m.remove("derives_from");
+                m.remove("ancestry");
+                for (_, x) in m.iter_mut() {
+                    scrub(x);
                 }
-                serde_json::Value::Array(a) => a.iter_mut().for_each(walk),
-                _ => {}
             }
+            serde_json::Value::Array(a) => a.iter_mut().for_each(scrub),
+            _ => {}
         }
-        walk(v);
-    };
-    let pairs = [
-        (
-            include_str!("../../src/schema/templates/audit_api_response.json"),
-            include_str!("../../../aqua-rs-sdk/src/schema/templates/audit_gusto_api_response.json"),
-        ),
-        (
-            include_str!("../../src/schema/templates/audit_agent_tool_call.json"),
-            include_str!("../../../aqua-rs-sdk/src/schema/templates/audit_agent_tool_call.json"),
-        ),
-    ];
-    for (core_raw, full_raw) in pairs {
-        let mut c: serde_json::Value = serde_json::from_str(core_raw).unwrap();
-        let mut f: serde_json::Value = serde_json::from_str(full_raw).unwrap();
-        scrub(&mut c);
-        scrub(&mut f);
-        assert_eq!(c, f, "fork must differ ONLY in description strings");
     }
+    macro_rules! forked_pair {
+        ($core_file:literal, $full_file:literal) => {{
+            let core_raw = include_str!(concat!("../../src/schema/templates/", $core_file));
+            let full_raw = include_str!(concat!(
+                "../../../aqua-rs-sdk/src/schema/templates/",
+                $full_file
+            ));
+            // Hash fork: computed links must differ.
+            let ct: core_::schema::Template = serde_json::from_str(core_raw).unwrap();
+            let ft: core_::schema::Template = serde_json::from_str(full_raw).unwrap();
+            assert_ne!(
+                ct.calculate_link(core_::primitives::HashType::Sha3_256)
+                    .unwrap(),
+                ft.calculate_link(core_::primitives::HashType::Sha3_256)
+                    .unwrap(),
+                concat!($core_file, ": expected a deliberate hash fork")
+            );
+            // Bounded fork: identical after removing ancestry linkage and
+            // description strings.
+            let mut c: serde_json::Value = serde_json::from_str(core_raw).unwrap();
+            let mut f: serde_json::Value = serde_json::from_str(full_raw).unwrap();
+            scrub(&mut c);
+            scrub(&mut f);
+            assert_eq!(
+                c, f,
+                concat!($core_file, ": fork must be bounded to ancestry + descriptions")
+            );
+        }};
+    }
+    forked_pair!("audit_artifact.json", "audit_artifact.json");
+    forked_pair!("audit_user_turn_marker.json", "audit_user_turn_marker.json");
+    forked_pair!("audit_user_prompt.json", "audit_user_prompt.json");
+    forked_pair!("audit_agent_thinking.json", "audit_agent_thinking.json");
+    forked_pair!("audit_agent_tool_call.json", "audit_agent_tool_call.json");
+    forked_pair!("audit_api_response.json", "audit_gusto_api_response.json");
+    forked_pair!("audit_tool_result.json", "audit_tool_result.json");
+    forked_pair!("audit_hitl_approval.json", "audit_hitl_approval.json");
+    forked_pair!("audit_agent_response.json", "audit_agent_response.json");
+    forked_pair!("audit_round_anchor.json", "audit_round_anchor.json");
+    forked_pair!("audit_session_close.json", "audit_session_close.json");
 }

@@ -9,7 +9,6 @@ use crate::{
     schema::{tree::Tree, AnyRevision, FileData, Template},
 };
 
-use super::compute::TemplateVerification;
 use super::object::verify_object;
 use super::signature::verify_signature;
 
@@ -22,10 +21,6 @@ pub(crate) static BUILTIN_TEMPLATE_NAMES: LazyLock<HashMap<[u8; 32], &'static st
 
         [
             (File::TEMPLATE_LINK, "file"),
-            (TimestampBase::TEMPLATE_LINK, "timestamp_base"),
-            (EvmTimestampPayload::TEMPLATE_LINK, "timestamp_evm"),
-            (TsaTimestampPayload::TEMPLATE_LINK, "timestamp_tsa"),
-            (IdentityBase::TEMPLATE_LINK, "identity_base"),
             (SignatureEip191::TEMPLATE_LINK, "signature_eip191"),
             (SignatureEd25519::TEMPLATE_LINK, "signature_ed25519"),
             (SignatureP256::TEMPLATE_LINK, "signature_p256"),
@@ -83,22 +78,6 @@ static BUILTIN_TEMPLATES: LazyLock<HashMap<[u8; 32], Template>> = LazyLock::new(
         (
             File::TEMPLATE_LINK,
             include_str!("../schema/templates/file.json"),
-        ),
-        (
-            TimestampBase::TEMPLATE_LINK,
-            include_str!("../schema/templates/timestamp_base.json"),
-        ),
-        (
-            EvmTimestampPayload::TEMPLATE_LINK,
-            include_str!("../schema/templates/timestamp_evm.json"),
-        ),
-        (
-            TsaTimestampPayload::TEMPLATE_LINK,
-            include_str!("../schema/templates/timestamp_tsa.json"),
-        ),
-        (
-            IdentityBase::TEMPLATE_LINK,
-            include_str!("../schema/templates/identity_base.json"),
         ),
         (
             SignatureEip191::TEMPLATE_LINK,
@@ -601,11 +580,29 @@ pub(crate) fn verify_revision_schema(
                 }
             },
             None => {
+                // Known full-SDK templates that core deliberately does not
+                // ship get an explicit explanation instead of a bare
+                // not-found. Same error code either way, so the
+                // template_not_found policy decision governs both.
+                let message = template_digest_key(obj.revision_type().as_ref())
+                    .and_then(|d| crate::primitives::unsupported::unsupported_template_info(&d))
+                    .map(|(name, requires)| {
+                        format!(
+                            "Template '{name}' ({}) is not supported for \
+                             verification by aqua-rs-sdk-core: it depends on \
+                             {requires}. Verify this tree with the full \
+                             aqua-rs-sdk.",
+                            obj.revision_type()
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        format!(
+                            "Template {} not found in tree or built-in registry",
+                            obj.revision_type()
+                        )
+                    });
                 logs.push(LogData {
-                    log: format!(
-                        "Template {} not found in tree or built-in registry",
-                        obj.revision_type()
-                    ),
+                    log: message,
                     log_type: LogType::Error,
                     ident: Some(indent.to_string()),
                 });
@@ -693,52 +690,29 @@ pub(crate) fn verify_revision_compute(
         return Ok(None);
     }
 
+    // No template shipped by aqua-rs-sdk-core carries a `verification`
+    // section (enforced by the no_shipped_template_carries_wasm test), so a
+    // non-empty chain always involves non-built-in WASM that core cannot
+    // execute or trust-gate. Fail closed; the caller maps the code through
+    // the governed policy decision points (timestamp-typed revisions to
+    // timestamp_unavailable, everything else to wasm_execution_failed).
     for entry in &ancestor_verifications {
-        if !is_builtin_template_link(&entry.template_hash) {
-            logs.push(LogData {
-                log: format!(
-                    "Template {} carries WASM verification, but aqua-rs-sdk-core \
-                     has no WASM runtime and cannot evaluate vendor trust for \
-                     non-built-in templates. Verify this tree with the full \
-                     aqua-rs-sdk.",
-                    entry.template_hash
-                ),
-                log_type: LogType::Error,
-                ident: Some(indent.to_string()),
-            });
-            return Err((false, "COMPUTE_UNSUPPORTED".to_string(), logs));
-        }
+        debug_assert!(
+            !is_builtin_template_link(&entry.template_hash),
+            "a shipped template unexpectedly carries WASM verification"
+        );
     }
-
-    // Timestamp revisions: the chain's WASM performs the on-chain / TSA
-    // attestation check, which core cannot run. Route through the governed
-    // timestamp_unavailable decision point (COMPUTE_UNSUPPORTED is mapped
-    // there by both pipelines for timestamp-typed revisions): strict policy
-    // rejects the unverifiable attestation, a relaxed policy may tolerate it
-    // with a warning. This matches the hostless full SDK's behavior, so core
-    // is never more permissive under the same policy. The batch-inclusion
-    // Merkle proof (Stage 2.5) has already run at this point.
-    if is_timestamp_revision_type(&revision.get_revision_type()) {
-        logs.push(LogData {
-            log: "Timestamp attestation cannot be verified by aqua-rs-sdk-core \
-                  (no WASM runtime, no providers); governed by the \
-                  timestamp_unavailable policy decision"
-                .to_string(),
-            log_type: LogType::Error,
-            ident: Some(indent.to_string()),
-        });
-        return Err((false, "COMPUTE_UNSUPPORTED".to_string(), logs));
-    }
-
     logs.push(LogData {
-        log: "Compute verification skipped: built-in template WASM is not \
-              executed by aqua-rs-sdk-core (no wasm_state recorded); use the \
-              full aqua-rs-sdk for compute-stage verification"
-            .to_string(),
-        log_type: LogType::Info,
+        log: format!(
+            "Template {child_template_hash} carries WASM verification in its \
+             chain, but aqua-rs-sdk-core has no WASM runtime and cannot \
+             evaluate vendor trust. Verify this tree with the full \
+             aqua-rs-sdk."
+        ),
+        log_type: LogType::Error,
         ident: Some(indent.to_string()),
     });
-    Ok(Some(logs))
+    Err((false, "COMPUTE_UNSUPPORTED".to_string(), logs))
 }
 
 /// Collect `TemplateVerification` entries from root → parent → child.
@@ -773,17 +747,12 @@ pub(crate) fn collect_ancestor_verifications(
             let ancestor_tmpl = resolve_template(ancestor_hash, revisions, linked_trees)
                 .ok_or_else(|| ancestor_hash.clone())?;
             if let Some(v) = ancestor_tmpl.verification() {
-                let mut v = v.clone();
-                // Built-in ancestors may carry terminal states implicitly (annotated
-                // here to avoid hash-breaking JSON changes). Custom ancestors declare
-                // `terminal_states` directly in their verification JSON. See
-                // spec-object-model §6.
-                if v.terminal_states.is_empty() {
-                    annotate_builtin_terminal_states(ancestor_hash, &mut v);
-                }
+                // No shipped template carries WASM, so any chain collected
+                // here belongs to custom templates; the compute stage fails
+                // closed on it (COMPUTE_UNSUPPORTED).
                 result.push(ChainVerification {
                     template_hash: ancestor_hash.clone(),
-                    verification: v,
+                    verification: v.clone(),
                 });
             }
         }
@@ -805,25 +774,6 @@ pub(crate) fn collect_ancestor_verifications(
 /// Terminal states cause the ancestor WASM chain to stop — child WASM never runs.
 /// This avoids modifying template JSON (which would change hashes and cascade through
 /// all derived templates). Future: templates declare `terminal_states` in JSON directly.
-fn annotate_builtin_terminal_states(
-    template_hash: &RevisionLink,
-    verification: &mut TemplateVerification,
-) {
-    use crate::schema::template::BuiltInTemplate;
-    use crate::schema::templates::IdentityBase;
-
-    // Ancestry entries are full multihashes (AD-21); normalize to bare digest
-    // for comparison with BuiltInTemplate::TEMPLATE_LINK constants.
-    let bare = match template_digest_key(template_hash.as_ref()) {
-        Some(k) => k,
-        None => return,
-    };
-    if bare == IdentityBase::TEMPLATE_LINK {
-        // spec-object-model §6.3: expired and not_yet_valid are temporal facts, non-overridable
-        verification.terminal_states = vec!["expired".to_string(), "not_yet_valid".to_string()];
-    }
-}
-
 // ── Stage 4: Type-specific verification ──────────────────────────────────
 // Timestamp objects go through the compute engine (Stage 3 above).
 // All other objects go through file content verification.
@@ -954,6 +904,35 @@ mod tests {
     // runtime resolution. This guard iterates the directory and asserts every
     // content template resolves in BOTH caches, turning that silent failure into a
     // red test (it also protects the WS5 PolicyCondition merge, and pins `manifest`).
+    /// E-D3: core ships zero WASM. Every template in the crate, cached or
+    /// not, must be data-only (no `verification` section). Walks the
+    /// templates directory so uncached templates are covered too.
+    #[test]
+    fn no_shipped_template_carries_wasm() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/schema/templates");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).expect("read templates dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let stem = path.file_stem().unwrap().to_str().unwrap().to_string();
+            if stem.ends_with("_schema") {
+                continue;
+            }
+            let json = std::fs::read_to_string(&path).expect("read template json");
+            let template: Template = serde_json::from_str(&json)
+                .unwrap_or_else(|e| panic!("{stem}.json is not a valid Template: {e}"));
+            assert!(
+                template.verification().is_none(),
+                "template `{stem}` carries a WASM verification section; \
+                 aqua-rs-sdk-core must ship data-only templates"
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "no templates were checked");
+    }
+
     #[test]
     fn builtin_caches_are_complete() {
         use crate::verification::Linkable;
@@ -1121,9 +1100,9 @@ mod tests {
 
     #[test]
     fn test_builtin_template_tree_root_has_one_revision() {
-        // IdentityBase is a root (L1) template — single Template revision, no Anchor
-        let tree = builtin_template_tree(&templates::IdentityBase::TEMPLATE_LINK)
-            .expect("IdentityBase should produce a tree");
+        // AuditArtifact is a root template — single Template revision, no Anchor
+        let tree = builtin_template_tree(&templates::AuditArtifact::TEMPLATE_LINK)
+            .expect("AuditArtifact should produce a tree");
         assert_eq!(
             tree.revisions.len(),
             1,
@@ -1163,8 +1142,8 @@ mod tests {
         let chain = builtin_template_tree_chain(&templates::AuditUserTurnMarker::TEMPLATE_LINK);
         assert_eq!(
             chain.len(),
-            3,
-            "AuditUserTurnMarker chain should have 3 trees"
+            2,
+            "AuditUserTurnMarker chain should have 2 trees"
         );
         // All template trees are single-revision (Template only, no Anchor)
         for (i, tree) in chain.iter().enumerate() {
@@ -1262,23 +1241,6 @@ mod tests {
 
     // ── Compositional monotonicity (spec-object-model §6) ────────────────
 
-    #[test]
-    fn test_identity_base_root_has_no_terminal_states_annotation() {
-        // identity_base itself (as root, no ancestry) should NOT have terminal_states
-        // annotated — annotation only happens during ancestry collection.
-        let link = RevisionLink::from_bytes(templates::IdentityBase::TEMPLATE_LINK);
-        let empty = BTreeMap::new();
-        let template = resolve_template(&link, &empty, &[]).unwrap();
-
-        let verifications = collect_ancestor_verifications(&template, &link, &empty, &[]).unwrap();
-        assert_eq!(verifications.len(), 1, "root template has 1 verification");
-        // Root template's verification comes from template.verification() directly,
-        // not from ancestry walk, so terminal_states is not annotated (empty from JSON).
-        assert!(
-            verifications[0].verification.terminal_states.is_empty(),
-            "root template verification should not have terminal_states (no parent to protect from)"
-        );
-    }
 
     // ── Custom (non-builtin) ancestor resolution (Workstream C: C2/C3) ────
     // spec-template-hierarchy §4 (WASM inheritance), spec-object-model §6
@@ -1286,8 +1248,11 @@ mod tests {
     // the built-in cache only, so a child of a custom parent silently bypassed
     // the parent's WASM. These tests pin the resolved-via-typed-context behavior.
 
-    fn custom_verification(states: Vec<&str>, terminal: Vec<&str>) -> TemplateVerification {
-        TemplateVerification {
+    fn custom_verification(
+        states: Vec<&str>,
+        terminal: Vec<&str>,
+    ) -> crate::core::compute::TemplateVerification {
+        crate::core::compute::TemplateVerification {
             computations: Vec::new(),
             host_dependencies: Vec::new(),
             states: states.into_iter().map(String::from).collect(),

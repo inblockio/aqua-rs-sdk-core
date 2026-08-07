@@ -56,9 +56,9 @@ impl BuiltInTemplate for AuditArtifact {
     /// Placeholder hash — Task 16 computes the real value via `verify-templates --fix`.
     /// This becomes `audit_artifact_root_hash` per spec §7.6.
     const TEMPLATE_LINK: [u8; 32] = [
-        0x11, 0x1d, 0x65, 0xc2, 0x53, 0xf7, 0x2b, 0xc4, 0xe2, 0xb6, 0x9e, 0xde, 0x96, 0x9b, 0x26,
-        0x78, 0x5d, 0xc5, 0xe5, 0x4b, 0xd6, 0xb2, 0x90, 0x6d, 0x79, 0x88, 0x72, 0x32, 0xbe, 0x24,
-        0x26, 0x65,
+        0x43, 0x16, 0x68, 0xe5, 0x3b, 0x21, 0x81, 0x31, 0x1e, 0xc4, 0x3d, 0xb3, 0x0f, 0xf4, 0xd4,
+        0xcf, 0x73, 0x80, 0x59, 0x05, 0x18, 0x29, 0xa5, 0xa4, 0xf3, 0x39, 0x8c, 0x22, 0x44, 0x0a,
+        0x16, 0xf3,
     ];
 }
 
@@ -125,25 +125,13 @@ mod tests {
         let template: serde_json::Value =
             serde_json::from_str(AuditArtifact::TEMPLATE_JSON).expect("parse TEMPLATE_JSON");
 
-        let identity_base_hash =
-            "0x1620812b61a5906095bc375273813918e994555e1f386595c0187438c00435b107b4";
-
-        assert_eq!(
-            template["derives_from"]
-                .as_str()
-                .expect("derives_from is a string"),
-            identity_base_hash,
-            "audit_artifact must derive from identity_base"
+        assert!(
+            template.get("derives_from").is_none(),
+            "audit_artifact is a root template: no derives_from"
         );
-
-        let ancestry = template["ancestry"]
-            .as_array()
-            .expect("ancestry is an array");
-        assert_eq!(ancestry.len(), 1, "ancestry must have exactly 1 entry");
-        assert_eq!(
-            ancestry[0].as_str().expect("ancestry[0] is a string"),
-            identity_base_hash,
-            "ancestry[0] must equal identity_base hash"
+        assert!(
+            template.get("ancestry").is_none(),
+            "audit_artifact is a root template: no ancestry"
         );
     }
 

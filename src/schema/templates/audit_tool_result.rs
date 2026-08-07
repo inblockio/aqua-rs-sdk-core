@@ -62,9 +62,9 @@ impl BuiltInTemplate for AuditToolResult {
     const TEMPLATE_JSON: &'static str = include_str!("audit_tool_result.json");
     /// Placeholder hash — Task 16 cascades the real value via `verify-templates --fix`.
     const TEMPLATE_LINK: [u8; 32] = [
-        0x61, 0xea, 0xea, 0x9d, 0x2a, 0xf4, 0xae, 0xe4, 0x9a, 0xb8, 0x31, 0x57, 0xdd, 0x8d, 0x3c,
-        0x3e, 0x83, 0xe7, 0x08, 0xaf, 0xb1, 0x68, 0x5a, 0xae, 0xa1, 0x1c, 0x21, 0x3b, 0x75, 0x0c,
-        0x24, 0xf7,
+        0xad, 0x46, 0xf5, 0x1c, 0xfc, 0xe3, 0xfd, 0x96, 0x1a, 0xcb, 0x2a, 0x3d, 0x90, 0x47, 0xb4,
+        0xc2, 0x17, 0xc3, 0xda, 0x43, 0xc3, 0x2a, 0xdd, 0xc4, 0x1e, 0x8e, 0x11, 0xb8, 0x4b, 0x5c,
+        0x47, 0x32,
     ];
 }
 
@@ -159,10 +159,7 @@ mod tests {
         let template: serde_json::Value =
             serde_json::from_str(AuditToolResult::TEMPLATE_JSON).expect("parse TEMPLATE_JSON");
 
-        let parent_hash = "0x1620111d65c253f72bc4e2b69ede969b26785dc5e54bd6b2906d79887232be242665";
-        let identity_base_hash =
-            "0x1620812b61a5906095bc375273813918e994555e1f386595c0187438c00435b107b4";
-
+        let parent_hash = "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3";
         assert_eq!(
             template["derives_from"]
                 .as_str()
@@ -174,16 +171,11 @@ mod tests {
         let ancestry = template["ancestry"]
             .as_array()
             .expect("ancestry is an array");
-        assert_eq!(ancestry.len(), 2, "ancestry must have exactly 2 entries");
+        assert_eq!(ancestry.len(), 1, "ancestry must have exactly 1 entry");
         assert_eq!(
             ancestry[0].as_str().unwrap(),
-            identity_base_hash,
-            "ancestry[0] must be identity_base real hash"
-        );
-        assert_eq!(
-            ancestry[1].as_str().unwrap(),
             parent_hash,
-            "ancestry[1] must be audit_artifact real hash"
+            "ancestry[0] must be audit_artifact real hash"
         );
     }
 }

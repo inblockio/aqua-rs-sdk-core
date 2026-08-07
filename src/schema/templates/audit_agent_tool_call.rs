@@ -73,9 +73,9 @@ impl BuiltInTemplate for AuditAgentToolCall {
     const TEMPLATE_JSON: &'static str = include_str!("audit_agent_tool_call.json");
     /// Placeholder hash — Task 16 cascades the real value via `verify-templates --fix`.
     const TEMPLATE_LINK: [u8; 32] = [
-        0x5c, 0x77, 0xb0, 0xf4, 0x05, 0x0f, 0xa7, 0x55, 0x7c, 0xac, 0xff, 0xdd, 0x49, 0xc9, 0x9f,
-        0x0f, 0xad, 0x6a, 0x30, 0x8f, 0xc4, 0xb1, 0x28, 0x2f, 0x88, 0x0d, 0xa2, 0xdb, 0x45, 0xd0,
-        0x09, 0xb4,
+        0x13, 0xd0, 0x8a, 0x7e, 0xa2, 0xa0, 0xdc, 0x5f, 0x4d, 0x5a, 0x38, 0x0d, 0x9d, 0xd9, 0x45,
+        0x6e, 0xc1, 0x03, 0x92, 0xbc, 0x75, 0x2f, 0x15, 0x25, 0x17, 0xdd, 0x22, 0x7b, 0xb2, 0x72,
+        0x59, 0x2f,
     ];
 }
 
@@ -185,7 +185,8 @@ mod tests {
     /// from opaque (any JSON) to a specific object schema with required fields?
     ///
     /// This is the go/no-go gate for creating operational templates (depth 3)
-    /// that refine T4's unconstrained `tool_args` into concrete per-tool schemas.
+    /// that refine T4's unconstrained `tool_args` into concrete per-tool schemas
+    /// (re-rooted family: T4 sits at depth 1, derivatives at depth 2).
     #[test]
     fn gate_narrowing_allows_tool_args_refinement() {
         use crate::core::template::create_derived_template_util;
@@ -195,7 +196,7 @@ mod tests {
             .expect("T4 template must parse");
 
         // Verify T4 is at depth 2 (ancestry length 2) so a derivative will be at depth 3
-        assert_eq!(t4.depth(), 2, "T4 must be at depth 2 before deriving");
+        assert_eq!(t4.depth(), 1, "T4 must be at depth 1 before deriving");
 
         // Child schema: identical top-level keys, tool_name narrowed to const,
         // tool_args narrowed from opaque (any JSON) to a specific object with
@@ -257,12 +258,14 @@ mod tests {
              AUDIT-LINKS Option B is blocked. See spec for fallback."
         );
 
-        // Verify the derived template is at depth 3 (ancestry length 3 = max)
+        // Re-rooted family: the derivative sits at depth 2 (ancestry
+        // [audit_artifact, audit_agent_tool_call]), one level of headroom
+        // below the protocol max of 3.
         let derived = result.unwrap();
         assert_eq!(
             derived.ancestry().map(|a| a.len()),
-            Some(3),
-            "derived operational template must be at depth 3 (max)"
+            Some(2),
+            "derived operational template must be at depth 2"
         );
     }
 
@@ -279,10 +282,7 @@ mod tests {
         let template: serde_json::Value =
             serde_json::from_str(AuditAgentToolCall::TEMPLATE_JSON).expect("parse TEMPLATE_JSON");
 
-        let parent_hash = "0x1620111d65c253f72bc4e2b69ede969b26785dc5e54bd6b2906d79887232be242665";
-        let identity_base_hash =
-            "0x1620812b61a5906095bc375273813918e994555e1f386595c0187438c00435b107b4";
-
+        let parent_hash = "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3";
         assert_eq!(
             template["derives_from"]
                 .as_str()
@@ -294,16 +294,11 @@ mod tests {
         let ancestry = template["ancestry"]
             .as_array()
             .expect("ancestry is an array");
-        assert_eq!(ancestry.len(), 2, "ancestry must have exactly 2 entries");
+        assert_eq!(ancestry.len(), 1, "ancestry must have exactly 1 entry");
         assert_eq!(
             ancestry[0].as_str().unwrap(),
-            identity_base_hash,
-            "ancestry[0] must be identity_base real hash"
-        );
-        assert_eq!(
-            ancestry[1].as_str().unwrap(),
             parent_hash,
-            "ancestry[1] must be audit_artifact real hash"
+            "ancestry[0] must be audit_artifact real hash"
         );
     }
 

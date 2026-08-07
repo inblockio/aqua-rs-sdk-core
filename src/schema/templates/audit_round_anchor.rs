@@ -96,9 +96,9 @@ impl BuiltInTemplate for AuditRoundAnchor {
     const TEMPLATE_JSON: &'static str = include_str!("audit_round_anchor.json");
     /// Placeholder hash, populated by `verify-templates --fix` (cascade-aware).
     const TEMPLATE_LINK: [u8; 32] = [
-        0x4c, 0xbc, 0x64, 0x4b, 0x36, 0x6c, 0xe1, 0x63, 0x5f, 0xea, 0xbb, 0x72, 0x33, 0xff, 0x85,
-        0x80, 0xfc, 0x98, 0xdd, 0xfe, 0xd4, 0xc5, 0xd4, 0x2c, 0xa1, 0x72, 0xfd, 0x49, 0x4b, 0xe6,
-        0x4d, 0xc7,
+        0xf1, 0x74, 0xf2, 0xf6, 0x69, 0xd1, 0x02, 0xd3, 0xd7, 0x4e, 0xfb, 0x80, 0x24, 0x8a, 0x08,
+        0x48, 0x5f, 0xe2, 0xc4, 0x0d, 0x18, 0xb2, 0xdf, 0x5c, 0xcc, 0x7d, 0x22, 0x5e, 0x79, 0x4b,
+        0x63, 0xe7,
     ];
 }
 
@@ -194,10 +194,7 @@ mod tests {
         let template: serde_json::Value =
             serde_json::from_str(AuditRoundAnchor::TEMPLATE_JSON).expect("parse TEMPLATE_JSON");
 
-        let parent_hash = "0x1620111d65c253f72bc4e2b69ede969b26785dc5e54bd6b2906d79887232be242665";
-        let identity_base_hash =
-            "0x1620812b61a5906095bc375273813918e994555e1f386595c0187438c00435b107b4";
-
+        let parent_hash = "0x1620431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3";
         assert_eq!(
             template["derives_from"]
                 .as_str()
@@ -209,16 +206,11 @@ mod tests {
         let ancestry = template["ancestry"]
             .as_array()
             .expect("ancestry is an array");
-        assert_eq!(ancestry.len(), 2, "ancestry must have exactly 2 entries");
+        assert_eq!(ancestry.len(), 1, "ancestry must have exactly 1 entry");
         assert_eq!(
             ancestry[0].as_str().unwrap(),
-            identity_base_hash,
-            "ancestry[0] must be identity_base real hash"
-        );
-        assert_eq!(
-            ancestry[1].as_str().unwrap(),
             parent_hash,
-            "ancestry[1] must be audit_artifact real hash"
+            "ancestry[0] must be audit_artifact real hash"
         );
     }
 }
