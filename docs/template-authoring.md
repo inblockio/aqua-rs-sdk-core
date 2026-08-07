@@ -49,7 +49,10 @@ Create `my_template.json`:
 Field notes:
 
 - `revision_type` is always the `template_meta` multihash shown above; it marks
-  this revision as a template.
+  this revision as a template. The crate exports it as
+  `primitives::TEMPLATE_META_REVISION_TYPE`, so a generator or test can use the
+  constant instead of retyping 70 hex characters (a typo there mints a
+  different, silently wrong type).
 - **Pin `nonce` and `local_timestamp` to fixed values.** Do not generate
   templates at runtime with random nonces or the current time: the hash would
   differ on every run and your type identity would never be stable. Pick the
@@ -110,17 +113,48 @@ for the built-in catalog, including derivation cascades:
 
 ## 5. Create objects of your type
 
+**Read this before using `create_object` for your own template.**
+`create_object` validates the payload only when it can resolve the template,
+and it resolves this crate's built-in catalog only. Your template is not in
+that catalog, so `create_object` will happily build a revision from a payload
+that violates your schema; the failure appears later, at whoever verifies the
+tree. (The same gap exists in the full `aqua-rs-sdk`.)
+
+Use the validated path, which takes explicit template sources:
+
 ```rust,ignore
-let tree = aquafier.create_object(
+let template: Template = serde_json::from_str(MyTemplate::TEMPLATE_JSON)?;
+let source = aquafier.template_tree(&template, Some("my_template"))?;
+
+let tree = aquafier.create_object_validated(
     RevisionLink::from_bytes(MyTemplate::TEMPLATE_LINK),
     None,                       // or Some(previous_tree) to append
     serde_json::json!({ "field": "value" }),
     None,                       // method override
+    &[source],                  // where the template lives
 )?;
 ```
 
-Payloads are validated against your schema at creation time and again at
-verification time.
+It fails closed: `TemplateNotFound` when no source supplies the type (never a
+silent unvalidated create), `AncestorTemplateNotFound` when the type resolves
+but its `derives_from` chain does not (verification resolves the whole chain,
+so shipping the child without the parent is dead on arrival), and
+`SchemaViolation` with per-field errors otherwise. Resolution order is the same
+one verification uses, so creation and verification cannot disagree.
+
+Plain `create_object` stays available and unchanged for built-in types, where
+its validation is complete:
+
+```rust,ignore
+let tree = aquafier.create_object(
+    RevisionLink::from_bytes(AuditUserTurnMarker::TEMPLATE_LINK),
+    None,
+    serde_json::json!({ "field": "value" }),
+    None,
+)?;
+```
+
+Either way, payloads are validated again at verification time.
 
 ## 6. Ship the template with your trees (portability)
 
@@ -139,11 +173,8 @@ types out of its own revisions:
 use aqua_rs_sdk_core::{ExportOptions, missing_templates};
 
 // One-revision template tree: the shape you publish and importers store.
-let mut revisions = BTreeMap::new();
 let template: Template = serde_json::from_str(MyTemplate::TEMPLATE_JSON)?;
-let link = template.calculate_link(HashType::Sha3_256)?;
-revisions.insert(link, AnyRevision::Template(template));
-let source = Tree { revisions, file_index: BTreeMap::new() };
+let source = aquafier.template_tree(&template, Some("my_template"))?;
 
 // Embedding is the default; extra sources supply bodies the tree and the
 // built-in catalog do not have.
@@ -164,10 +195,11 @@ Notes:
 
 ### The pattern underneath
 
-`export_tree` is automation over one primitive, which you can also apply by
-hand: insert the template revision into the tree under its **full multihash**
-link (`calculate_link`, `0x1620...`), never the bare 32-byte digest, because
-Stage 1 recomputes each revision's hash from its own key.
+`export_tree` is automation over one primitive, which `template_tree` also
+applies and which you can apply by hand: insert the template revision into the
+tree under its **full multihash** link (`calculate_link`, `0x1620...`), never
+the bare 32-byte digest, because Stage 1 recomputes each revision's hash from
+its own key.
 
 ```rust,ignore
 let template: Template = serde_json::from_str(MyTemplate::TEMPLATE_JSON)?;

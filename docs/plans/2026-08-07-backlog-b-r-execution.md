@@ -77,3 +77,47 @@ AC1 all in-scope items marked [x] in the backlogs with dates and file refs
 exit code in both repos, clippy baselines not worsened. AC3 orchestrator
 independently re-runs the verification battery before pushing. AC4 audit
 addendum appended to this file with the trace.
+
+## Audit addendum: core side (2026-08-07)
+
+Executed: B1, B2, B3, B4, B6, B7, B8, B9, B10. Out of scope by direction and
+left open: B5 (spec-gated wire-format change) and A1-A8 (upstream).
+
+| Item | Landed as | Evidence |
+|---|---|---|
+| B1 | `RevisionLink::bare_digest` / `bare_digest_hex` | `src/primitives/mod.rs`, 5 tests |
+| B2 | `builtin_template_hashes`, `shipped_template_hashes`, `shipped_templates` | `src/core/verify_stages.rs`, 5 tests incl. ledger equality |
+| B3 | `generate_ed25519` | `src/core/signature/sign_did.rs`, 3 tests |
+| B4 | `Aquafier::template_tree` | `src/core/template.rs`, 3 tests |
+| B6 | `Aquafier::create_object_validated` | `src/core/object.rs`, 6 tests |
+| B7 | `.github/workflows/ci.yml` | every command run locally, all exit 0 |
+| B8 | `src/bin/regen_unsupported.rs` | regeneration is a no-op against the current full SDK |
+| B9 | `merkle::try_merkle_root` | `src/primitives/merkle.rs`, 3 tests |
+| B10 | `primitives::TEMPLATE_META_REVISION_TYPE` | `src/primitives/revision_kind.rs`, 3 tests |
+
+Hypothesis outcomes:
+
+- **P1 holds.** All items are additive. No template JSON, hashing,
+  canonicalization, signature, or verification-semantics path was modified;
+  `verify-templates` reports "All 19 templates verified. No drift detected."
+  `cargo test --workspace` exits 0 (404 lib, 10 bin, 11 compat, 5 doc).
+  Clippy on `--lib --features native` stays at the inherited 14 warnings,
+  confirmed by stash-comparing against the pre-round tree.
+- **P2 holds, and is now enforced rather than asserted once.** The B2
+  accessor is compared to `tests/audit_template_hashes.txt` entry for entry
+  in both directions, and every row's digest is recomputed from its own
+  template JSON, so neither the ledger nor the accessor can drift alone.
+- **P3 holds for the core workflow.** Each of the twelve commands in
+  `.github/workflows/ci.yml` was executed against this checkout; all exit 0.
+  The live CI run is still unverified and depends on `inblockio/aqua-rs-sdk`
+  being public, which the workflow file states plainly rather than hiding
+  behind a skip.
+- **P7 holds on the core side.** `cargo publish --dry-run` succeeds with the
+  new binary inside the package; every commit compiles.
+
+Deviation from the plan, recorded rather than silently dropped: B10's second
+half (aligning `merkle`'s `&HashType` parameters with the by-value
+convention) was NOT done. It is source-breaking for existing callers and
+diverges a file that is a verbatim copy of the full SDK's. The plan gated it
+on staying non-breaking, so it stays open in BACKLOG B10 with the reasoning
+and the `impl Borrow<HashType>` alternative written down.

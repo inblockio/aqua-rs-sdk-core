@@ -60,29 +60,61 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
 
 ## B. Core API and tooling (from the extraction and registry audits)
 
-- [ ] B1. `RevisionLink::bare_digest()` helper. The multihash-versus-bare-
-      digest split is a live footgun: `calculate_link` returns `0x1620...`
-      multihash while `template_hash` fields and the ledger use the bare
-      64-hex digest, and nothing converts between them.
-- [ ] B2. Programmatic `builtin_template_hashes() -> &'static [(&str, [u8; 32])]`
-      accessor. The ledger is a text file under `tests/` that publishers
-      currently parse by hand.
-- [ ] B3. Ed25519 keypair generation helper (`generate_ed25519()` or similar)
-      so consumers stop hand-rolling key material against a possibly skewed
-      `ed25519-dalek` version.
-- [ ] B4. `Aquafier::template_tree(&Template)` convenience for the
-      portable-template pattern (single-revision tree keyed by the full
-      multihash link; the bare-digest keying of the internal builtin trees is
-      not reusable for verifiable linked trees).
+- [x] B1. `RevisionLink::bare_digest()` (2026-08-07). Plus
+      `bare_digest_hex()` for the `0x` + 64-hex form ledgers and
+      `..._hash` payload fields use. Accepts either input form (bare 32-byte
+      digest or any well-formed Aqua-profile multihash) and returns `None`
+      rather than panicking on anything else. Deliberately algorithm-agnostic,
+      since BLAKE3-256 revision links are legitimate; the SHA3-only rule for
+      template ids stays in the template index, which is untouched.
+      `src/primitives/mod.rs` (5 tests, including agreement with the template
+      index key over every built-in digest in both forms).
+- [x] B2. Programmatic template hash accessors (2026-08-07). Three views over
+      one table built from the templates' own `BuiltInTemplate` constants:
+      `builtin_template_hashes()` (the 14-entry verification catalog),
+      `shipped_template_hashes()` (all 19 shipped), and `shipped_templates()`
+      (`(name, JSON, digest)`, the publishing view). `src/core/verify_stages.rs`,
+      re-exported from `core` and as `Aquafier::` associated functions.
+      Drift is impossible in both directions: a test compares
+      `shipped_template_hashes()` to `tests/audit_template_hashes.txt` entry for
+      entry, another recomputes every row's digest from its own JSON, a third
+      pins the catalog view to the resolution cache and the shipped view to
+      exactly the five deliberate non-catalog templates.
+- [x] B3. `generate_ed25519() -> ([u8; 32], String)` (2026-08-07). OS CSPRNG
+      through this crate's own `ed25519-dalek`; returns the seed ready for
+      `SigningCredentials::Did` plus the `did:key` it derives.
+      `src/core/signature/sign_did.rs`, re-exported at the crate root. Tested
+      by signing a real tree with a generated key and verifying it.
+- [x] B4. `Aquafier::template_tree(&Template, Option<&str>)` (2026-08-07).
+      Single-revision tree keyed by the FULL multihash link, with the
+      built-in name or a hash fallback as its `file_index` label.
+      `src/core/template.rs` (`template_tree_util`), used by the example and
+      by `export_tree`'s naming helper. Tested by resolving a synthesized
+      custom type through it as a linked tree.
 - [ ] B5. Machine-readable abstract-template marker. `audit_artifact` is
       abstract by convention only; registries and verifiers cannot tell.
       Wire-format change, so this needs the upstream spec process first.
-- [ ] B6. Creation-time schema validation for non-built-in templates in
-      `create_object` (currently validation happens only at verification;
-      inherited from upstream). Fix both sides or document loudly in both.
-- [ ] B7. CI for the public repo: the compat suite needs a sibling
-      `../aqua-rs-sdk` checkout. Either a private CI job with both repos or
-      vendored fixtures for the public job.
+- [x] B6. Validated creation path (2026-08-07). Additive:
+      `Aquafier::create_object_validated(..., template_sources)` resolves the
+      template from the previous tree, the built-in catalog, then the caller's
+      sources (verification's exact order) and fails closed with
+      `TemplateNotFound`, `AncestorTemplateNotFound`, or `SchemaViolation`.
+      `create_object` is untouched, and the gap it leaves is now pinned by a
+      test and documented loudly in `README.md` and
+      `docs/template-authoring.md` section 5. `src/core/object.rs` (6 tests).
+      The upstream half of "fix both sides" remains open and belongs with the
+      section A migration.
+- [x] B7. CI for the public repo (2026-08-07). `.github/workflows/ci.yml`:
+      a `core` job (fmt for this package, build, `test --lib --bins`, doc
+      tests, clippy, rustdoc, verify-templates, the example, publish dry run)
+      and a `compat` job that clones `inblockio/aqua-rs-sdk` as a sibling and
+      runs `cargo test --workspace`. Every command was run locally first.
+      Two documented judgement calls: the compat job stays strict and fails
+      while that repo is private (a silently skipped compat job is the
+      "green because uncovered" failure mode), and clippy denies the
+      correctness group rather than all warnings, because the lib carries 14
+      warnings inherited from verbatim-copied files and a pinned total would
+      break on every new lint.
 - [x] B8a. Self-descriptive exports (2026-08-07). Shipped as
       `Aquafier::export_tree(&tree, &extra_template_sources, &ExportOptions)`
       in `src/core/export.rs`, re-exported from the crate root together with
@@ -107,17 +139,43 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
       a non-vacuity control), `examples/agent_audit_trail.rs`,
       `README.md` ("Self-descriptive exports"), and
       `docs/template-authoring.md` section 6.
-- [ ] B9. `merkle::merkle_root(&[])` panics (unwrap on an empty level).
-      A library primitive fed caller data must return an error or a defined
-      empty-tree digest, not panic. Found by the registry's feed-head work,
-      which guards it caller-side for now.
-- [ ] B10. Small authoring papercuts from the registry sessions: export a
-      `TEMPLATE_META_REVISION_TYPE: &str` constant (the 0x1620... string every
-      template JSON author currently copy-pastes), and align `merkle`'s
-      `&HashType` parameters with `calculate_link`'s by-value convention.
-- [ ] B8. Commit a regeneration script for `primitives::unsupported`
-      (currently an ad hoc extraction from the full SDK's catalog); document
-      when to run it (every upstream template addition or removal).
+- [x] B9. `merkle::try_merkle_root` (2026-08-07). Non-breaking by direction:
+      `merkle_root` keeps its bytes and its signature, because it is a
+      byte-for-byte shared primitive with the full SDK and changing it there
+      would fork a hashing path; it gains a `# Panics` section instead. The
+      guard returns `Option` (one failure mode, fully described by the input
+      being empty). `src/primitives/merkle.rs`, 3 tests: the panic is pinned,
+      the `None` is asserted, and byte equality with `merkle_root` is checked
+      for 1 to 17 leaves.
+- [x] B10. Authoring papercuts (2026-08-07), partially: the constant landed,
+      the `&HashType` alignment did not.
+      `primitives::TEMPLATE_META_REVISION_TYPE` is a compile-time `&str`
+      (unlike the lazily built `TEMPLATE_META_HEX`) in
+      `src/primitives/revision_kind.rs`, tied by tests to
+      `TemplateMeta::TEMPLATE_LINK`, to `TEMPLATE_META_HEX`, and to the
+      `revision_type` of all 19 shipped template JSONs; documented in
+      `docs/template-authoring.md` section 3.
+      SKIPPED, per the plan's non-breaking condition: changing `merkle`'s
+      `&HashType` parameters to by-value is a source-breaking signature change
+      for every existing caller (the registry passes `&HashType` today) and
+      diverges `merkle.rs` from the full SDK's verbatim copy. An
+      `impl Borrow<HashType>` generic would accept both forms without breaking
+      callers; it was left out because it changes the shape of a hashing-path
+      function for cosmetics. Revisit alongside the A1-A8 upstream
+      harmonisation, when the two copies are being touched anyway.
+- [x] B8. Regeneration binary for `primitives::unsupported` (2026-08-07).
+      `src/bin/regen_unsupported.rs`, run as
+      `cargo run --bin regen-unsupported --features native`, with `--check`
+      as a read-only drift gate. It parses the full SDK's template JSONs with
+      this crate's own `Template` and `calculate_link`, so hashes come from
+      the pipeline under test, and decides support by digest rather than by
+      name (the re-rooted audit family shares names across the repos and must
+      stay listed). The editorial "requires <module>" strings live in an
+      explicit name-keyed table that panics loudly on an unknown template.
+      Running it now writes nothing, which is the proof it reproduces the ad
+      hoc extraction. When to run it is documented in the module doc comment
+      and in the binary header: every upstream template addition or removal,
+      and after A1-A8.
 
 ## C. Pointers
 

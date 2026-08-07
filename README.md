@@ -4,13 +4,13 @@ A minimal, WASM-free Rust implementation of the [Aqua Protocol](https://aqua-pro
 
 ### Implemented
 
-- **Verification layer 1** — revision objects
-- **Verification layer 2** — template-typed trees (without WASM compute)
+- **Verification layer 1**: revision objects
+- **Verification layer 2**: template-typed trees (without WASM compute)
 
 ### Not implemented
 
-- **Verification layer 3** — intra-tree (stateful) verification
-- **Verification layer 4** — policy evaluation of stateful tree objects
+- **Verification layer 3**: intra-tree (stateful) verification
+- **Verification layer 4**: policy evaluation of stateful tree objects
 
 `aqua-rs-sdk-core` is a **compatible subset** of the full
 [`aqua-rs-sdk`](https://github.com/inblockio/aqua-rs-sdk). Every template it
@@ -209,6 +209,40 @@ size per exported tree.
 The compat suite proves the round trip end to end: a core-signed T1 audit tree
 run through `export_tree` verifies in the **full SDK** with no linked trees,
 while the same tree un-exported fails there.
+
+## Working with templates: what the API gives you
+
+Small, boring helpers that publishers and consumers were previously writing
+by hand (and getting wrong):
+
+| Need | API |
+|---|---|
+| Convert a wire link (`0x1620...`) to the bare 64-hex digest used by ledgers, `TEMPLATE_LINK` constants, and `..._hash` payload fields | `RevisionLink::bare_digest()`, `bare_digest_hex()` |
+| The shipped template hashes as data instead of parsing `tests/audit_template_hashes.txt` | `Aquafier::shipped_template_hashes()`, `builtin_template_hashes()`, and `core::shipped_templates()` for `(name, JSON, digest)` |
+| A fresh signing identity | `generate_ed25519() -> ([u8; 32], String)` (secret plus its `did:key`) |
+| Publish or ship a template | `Aquafier::template_tree(&template, name)` (one-revision tree, full multihash key) |
+| The `revision_type` every template JSON must declare | `primitives::TEMPLATE_META_REVISION_TYPE` |
+| A Merkle root over a possibly empty batch | `merkle::try_merkle_root` (`merkle_root` panics on empty input, by documented design) |
+
+**Creation-time validation is only automatic for built-in templates.**
+`create_object` validates the payload against the template's JSON Schema when
+it can resolve the template, and it can only resolve this crate's built-ins.
+For a custom, imported, or registry-sourced type it creates the revision
+**unvalidated**, and the mistake surfaces later at the receiver. Use
+`create_object_validated`, which takes explicit template sources and fails
+closed if the template (or an ancestor in its `derives_from` chain) is not
+among them:
+
+```rust,ignore
+let source = aquafier.template_tree(&my_template, Some("my_template"))?;
+let tree = aquafier.create_object_validated(
+    my_template_link,
+    None,
+    serde_json::json!({ "field": "value" }),
+    None,
+    &[source],
+)?;
+```
 
 ## Custom templates
 
