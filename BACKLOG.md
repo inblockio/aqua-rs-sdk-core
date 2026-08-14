@@ -100,8 +100,9 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
       `create_object` is untouched, and the gap it leaves is now pinned by a
       test and documented loudly in `README.md` and
       `docs/template-authoring.md` section 5. `src/core/object.rs` (6 tests).
-      Full-SDK port is a sibling task on the same
-      `feat/audit-family-harmonisation` branch (B6 on both sides).
+      Full-SDK port landed 2026-08-14 as `1d8955a` on
+      `feat/audit-family-harmonisation` (`create_object_validated` +
+      `template_tree`; `create_object` unchanged).
 - [x] B7. CI for the public repo (2026-08-07). `.github/workflows/ci.yml`:
       a `core` job (fmt for this package, build, `test --lib --bins`, doc
       tests, clippy, rustdoc, verify-templates, the example, publish dry run)

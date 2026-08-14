@@ -69,14 +69,13 @@ excluded by direction.
 
 ## The backlogs are the single source of open work
 
-- Core: `BACKLOG.md` (this repo). **Section A tracks the upstream SDK
-  changes and is deliberately execution-blocked from this side**: A1-A8 are
-  ONE atomic migration inside the full aqua-rs-sdk (re-root, rename, scrub,
-  cascade, spec updates) and must be executed by whoever owns that repo.
-  Partial adoption would mint a third set of audit type identities. The
-  acceptance signal is objective: core's compat test
-  `audit_family_divergence_is_intentional` must flip to failing, after which
-  the audit templates return to the byte-identical parity lists.
+- Core: `BACKLOG.md` (this repo). **A1–A5 landed** 2026-08-14 on
+  `feat/audit-family-harmonisation` (full SDK `36a8b65`; core A4 follow-up
+  `5bc449a`). The 11 audit templates are byte-identical across the two
+  SDKs. A6–A8 were excluded by direction (no backward compatibility, no
+  `unsupported` regen, no A1–A3 spec-only pass). B11 removed the family
+  from core's verification catalog; the registry is the distribution
+  channel. Remaining open: B5 (spec-gated abstract marker).
 - Registry: `BACKLOG.md` in the registry repo (R-items).
 - Both files carry status markers and dates; done items keep their evidence
   references.
@@ -85,7 +84,9 @@ excluded by direction.
 
 1. crates.io publication of aqua-rs-sdk-core (`cargo publish --dry-run`
    passes; compat-tests are excluded from the package).
-2. The upstream A1-A8 migration window.
+2. Merge order for `feat/audit-family-harmonisation`: full SDK first,
+   then core, then the registry (core's compat suite now requires the
+   re-rooted full-SDK catalog). A6–A8 remain excluded.
 3. README layer taxonomy: the Implemented / Not implemented section (L1
    revision objects, L2 template-typed trees) and an older sentence
    describing "the full L1-L3 pipeline" use different layer numberings.
