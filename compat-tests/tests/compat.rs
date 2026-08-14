@@ -10,8 +10,9 @@
 //!  * cross-verification: trees created and signed by core verify in the
 //!    full SDK, and vice versa (H3, H4),
 //!  * audit family: a t1 audit object signed by core verifies in both (H5),
-//!    in the full SDK through a self-descriptive `export_tree`, with no
-//!    linked trees supplied,
+//!    in core via explicit fixture sources (the family is not a core
+//!    built-in), in the full SDK as a catalog type, and in both through a
+//!    self-descriptive `export_tree`,
 //!  * deterministic seed fixtures from the full SDK verify identically (H4),
 //!  * timestamp trees: outcome parity per verification policy; core is
 //!    never more permissive than the hostless full SDK (H6),
@@ -77,10 +78,19 @@ fn template_hash_constants_match() {
     pair!(SignatureP256);
     pair!(SignatureWebauthn);
     pair!(File);
-    // The audit family, identity_base, and the timestamp templates are NOT
-    // compared: the audit templates are the deliberately re-rooted variants
-    // (see audit_family_divergence_is_intentional) and identity_base plus
-    // the timestamp templates left core entirely (unsupported-lookup, E-D2).
+    pair!(AuditArtifact);
+    pair!(AuditUserTurnMarker);
+    pair!(AuditUserPrompt);
+    pair!(AuditAgentThinking);
+    pair!(AuditAgentToolCall);
+    pair!(AuditApiResponse);
+    pair!(AuditToolResult);
+    pair!(AuditHitlApproval);
+    pair!(AuditAgentResponse);
+    pair!(AuditRoundAnchor);
+    pair!(AuditSessionClose);
+    // identity_base and the timestamp templates left core entirely
+    // (unsupported-lookup, E-D2) and are not compared.
 }
 
 // ── H3: canonicalization parity on identical input ──────────────────────
@@ -200,11 +210,12 @@ async fn full_sdk_signed_file_tree_verifies_in_core() {
     );
 }
 
-// ── H5: audit template family (identity_base WASM ancestry) ─────────────
+// ── H5: audit template family (registry-distributed, byte-identical) ────
 
 #[tokio::test(flavor = "multi_thread")]
 async fn audit_turn_marker_cross_verifies() {
     use core_::schema::template::BuiltInTemplate;
+    use core_::schema::templates::{AuditArtifact, AuditUserTurnMarker};
 
     let payload = serde_json::json!({
         "signer_did": "did:key:z6MkcompatTestServerKey",
@@ -213,14 +224,26 @@ async fn audit_turn_marker_cross_verifies() {
         "opens_at": 1754500000u64,
     });
     let aq = core_::Aquafier::new();
+
+    // B11: the family is not a core built-in. Creation and export take
+    // explicit fixture sources (the same bodies the registry publishes).
+    let artifact: core_::schema::Template =
+        serde_json::from_str(AuditArtifact::TEMPLATE_JSON).unwrap();
+    let t1: core_::schema::Template =
+        serde_json::from_str(AuditUserTurnMarker::TEMPLATE_JSON).unwrap();
+    let sources = [
+        aq.template_tree(&artifact, Some("audit_artifact")).unwrap(),
+        aq.template_tree(&t1, Some("audit_user_turn_marker"))
+            .unwrap(),
+    ];
+
     let tree = aq
-        .create_object(
-            core_::primitives::RevisionLink::from_bytes(
-                core_::schema::templates::AuditUserTurnMarker::TEMPLATE_LINK,
-            ),
+        .create_object_validated(
+            core_::primitives::RevisionLink::from_bytes(AuditUserTurnMarker::TEMPLATE_LINK),
             None,
             payload,
             None,
+            &sources,
         )
         .unwrap();
     let signed = aq
@@ -235,9 +258,9 @@ async fn audit_turn_marker_cross_verifies() {
         .await
         .unwrap();
 
-    // Core: the re-rooted audit chain is pure data (no WASM anywhere), so
-    // verification runs with no compute involvement at all.
-    let core_result = aq
+    // Core catalog miss: a bare tree must fail closed (B11). The ancestor is
+    // supplied by export (embeds T1 + audit_artifact into the tree).
+    let core_bare = aq
         .verify_aqua_tree(
             core_::schema::AquaTreeWrapper::new(signed.aqua_tree.clone(), None, None),
             vec![],
@@ -245,21 +268,13 @@ async fn audit_turn_marker_cross_verifies() {
         .await
         .unwrap();
     assert!(
-        core_result.is_verified(),
-        "t1 audit tree must verify in core: {:?}",
-        core_result.logs
-    );
-    assert!(
-        !core_result
-            .logs
-            .iter()
-            .any(|l| l.log.contains("Compute verification skipped")),
-        "re-rooted audit chain must not involve the compute stage at all"
+        !core_bare.is_verified(),
+        "B11: an audit tree without sources must not resolve in core: {:?}",
+        core_bare.logs
     );
 
-    // Non-vacuity control: shipped as-is, the same tree must FAIL in the full
-    // SDK, whose catalog holds the old identity-rooted audit hashes instead.
-    // Without this the export assertion below could pass for the wrong reason.
+    // After A1–A4 the hashes match, and the full SDK still catalogs the
+    // family, so a bare (un-exported) core audit tree verifies there.
     let bare_result = full::Aquafier::new()
         .verify_aqua_tree(
             full::schema::AquaTreeWrapper::new(core_tree_to_full(&signed.aqua_tree), None, None),
@@ -268,20 +283,21 @@ async fn audit_turn_marker_cross_verifies() {
         .await
         .unwrap();
     assert!(
-        !bare_result.is_verified(),
-        "an un-exported core audit tree must not resolve in the full SDK"
+        bare_result.is_verified(),
+        "unified audit hashes must resolve in the full SDK catalog: {:?}",
+        bare_result.logs
     );
 
-    // Full SDK: core's re-rooted templates are not full-SDK built-ins, so the
-    // tree has to carry them. That is exactly what a self-descriptive export
-    // is for: export_tree with defaults walks the T1 object's type and its
-    // audit_artifact ancestry and embeds both template revisions under their
-    // multihash links. "Built-in" is receiver-relative, which this assertion
-    // is the live proof of: both templates are built-in to core and neither
-    // resolves in the full SDK, so the export must ship them anyway.
+    // Self-descriptive export: core needs the fixture sources (catalog miss);
+    // the result carries T1 and its audit_artifact root so any receiver can
+    // verify with no side inputs.
     let portable = aq
-        .export_tree(&signed.aqua_tree, &[], &core_::ExportOptions::default())
-        .expect("core's own audit templates resolve from its catalog");
+        .export_tree(
+            &signed.aqua_tree,
+            &sources,
+            &core_::ExportOptions::default(),
+        )
+        .expect("fixture sources supply the audit templates");
     assert_eq!(
         portable
             .revisions
@@ -295,6 +311,27 @@ async fn audit_turn_marker_cross_verifies() {
         core_::missing_templates(&portable).is_empty(),
         "an exported tree must reference no unresolvable type"
     );
+
+    let core_result = aq
+        .verify_aqua_tree(
+            core_::schema::AquaTreeWrapper::new(portable.clone(), None, None),
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert!(
+        core_result.is_verified(),
+        "exported t1 audit tree must verify in core standalone: {:?}",
+        core_result.logs
+    );
+    assert!(
+        !core_result
+            .logs
+            .iter()
+            .any(|l| l.log.contains("Compute verification skipped")),
+        "re-rooted audit chain must not involve the compute stage at all"
+    );
+
     let full_tree = core_tree_to_full(&portable);
     let full_result = full::Aquafier::new()
         .verify_aqua_tree(
@@ -305,7 +342,7 @@ async fn audit_turn_marker_cross_verifies() {
         .unwrap();
     assert!(
         full_result.is_verified(),
-        "core-signed re-rooted t1 audit tree must verify in the full SDK \
+        "core-signed t1 audit tree must verify in the full SDK \
          via the portable-template pattern: {:?}",
         full_result.logs
     );
@@ -622,74 +659,15 @@ fn template_files_byte_identical() {
     file_pair!("signature_p256.json");
     file_pair!("signature_webauthn.json");
     file_pair!("file.json");
-}
-
-// ── Deliberate divergence: the audit family forked from the full SDK ────
-//
-// 2026-08-07 (Tim): the audit family was re-rooted at audit_artifact
-// (identity_base removed from ancestry), T5 was renamed to
-// audit_api_response, and customer-derived example strings were scrubbed
-// from the T4/T5 descriptions. Template hash = type identity, so all 11
-// audit templates are new types. This test documents that the divergence
-// is intentional and exactly bounded: hashes differ, and the JSONs differ
-// from the full SDK's ONLY in derives_from/ancestry and descriptions.
-
-#[test]
-fn audit_family_divergence_is_intentional() {
-    use core_::verification::Linkable;
-
-    fn scrub(v: &mut serde_json::Value) {
-        match v {
-            serde_json::Value::Object(m) => {
-                m.remove("description");
-                m.remove("derives_from");
-                m.remove("ancestry");
-                for (_, x) in m.iter_mut() {
-                    scrub(x);
-                }
-            }
-            serde_json::Value::Array(a) => a.iter_mut().for_each(scrub),
-            _ => {}
-        }
-    }
-    macro_rules! forked_pair {
-        ($core_file:literal, $full_file:literal) => {{
-            let core_raw = include_str!(concat!("../../src/schema/templates/", $core_file));
-            let full_raw = include_str!(concat!(
-                "../../../aqua-rs-sdk/src/schema/templates/",
-                $full_file
-            ));
-            // Hash fork: computed links must differ.
-            let ct: core_::schema::Template = serde_json::from_str(core_raw).unwrap();
-            let ft: core_::schema::Template = serde_json::from_str(full_raw).unwrap();
-            assert_ne!(
-                ct.calculate_link(core_::primitives::HashType::Sha3_256)
-                    .unwrap(),
-                ft.calculate_link(core_::primitives::HashType::Sha3_256)
-                    .unwrap(),
-                concat!($core_file, ": expected a deliberate hash fork")
-            );
-            // Bounded fork: identical after removing ancestry linkage and
-            // description strings.
-            let mut c: serde_json::Value = serde_json::from_str(core_raw).unwrap();
-            let mut f: serde_json::Value = serde_json::from_str(full_raw).unwrap();
-            scrub(&mut c);
-            scrub(&mut f);
-            assert_eq!(
-                c, f,
-                concat!($core_file, ": fork must be bounded to ancestry + descriptions")
-            );
-        }};
-    }
-    forked_pair!("audit_artifact.json", "audit_artifact.json");
-    forked_pair!("audit_user_turn_marker.json", "audit_user_turn_marker.json");
-    forked_pair!("audit_user_prompt.json", "audit_user_prompt.json");
-    forked_pair!("audit_agent_thinking.json", "audit_agent_thinking.json");
-    forked_pair!("audit_agent_tool_call.json", "audit_agent_tool_call.json");
-    forked_pair!("audit_api_response.json", "audit_gusto_api_response.json");
-    forked_pair!("audit_tool_result.json", "audit_tool_result.json");
-    forked_pair!("audit_hitl_approval.json", "audit_hitl_approval.json");
-    forked_pair!("audit_agent_response.json", "audit_agent_response.json");
-    forked_pair!("audit_round_anchor.json", "audit_round_anchor.json");
-    forked_pair!("audit_session_close.json", "audit_session_close.json");
+    file_pair!("audit_artifact.json");
+    file_pair!("audit_user_turn_marker.json");
+    file_pair!("audit_user_prompt.json");
+    file_pair!("audit_agent_thinking.json");
+    file_pair!("audit_agent_tool_call.json");
+    file_pair!("audit_api_response.json");
+    file_pair!("audit_tool_result.json");
+    file_pair!("audit_hitl_approval.json");
+    file_pair!("audit_agent_response.json");
+    file_pair!("audit_round_anchor.json");
+    file_pair!("audit_session_close.json");
 }
