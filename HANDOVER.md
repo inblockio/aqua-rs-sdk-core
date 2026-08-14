@@ -48,6 +48,7 @@ excluded by direction.
     cd aqua-rs-sdk-core
     cargo test && echo OK
     cargo test --manifest-path compat-tests/Cargo.toml && echo OK
+    # release (timed): ./scripts/release.sh X.Y.Z   — see RELEASE.md
     cargo run --features native --bin verify-templates
     cargo run --example agent_audit_trail --features native
 
@@ -82,8 +83,8 @@ excluded by direction.
 
 ## Open decisions for the maintainers
 
-1. crates.io publication of aqua-rs-sdk-core (`cargo publish --dry-run`
-   passes; compat-tests are excluded from the package).
+1. crates.io: `0.1.1` is live. Further releases go through
+   [`RELEASE.md`](RELEASE.md) / `scripts/release.sh` only.
 2. Merge order for `feat/audit-family-harmonisation`: full SDK first,
    then core, then the registry (core's compat suite now requires the
    re-rooted full-SDK catalog). A6–A8 remain excluded.

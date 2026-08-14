@@ -80,6 +80,10 @@ aqua-rs-sdk-core = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] } # for the async API
 ```
 
+Releases are timed events, not merge side-effects. `Cargo.toml` = git tag
+`vX.Y.Z` = crates.io. Use [`scripts/release.sh`](scripts/release.sh); see
+[RELEASE.md](RELEASE.md).
+
 The `native` feature (on by default) enables the EIP-191 secp256k1 signer.
 There is also a fully synchronous verification path (`verify_tree_sync`) if you
 prefer not to pull in an async runtime for verification.

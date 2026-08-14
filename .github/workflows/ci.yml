@@ -42,6 +42,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -109,6 +110,16 @@ jobs:
 
       - name: Packaging (publish dry run)
         run: cargo publish --locked --dry-run
+
+      # A release tag must name the Cargo.toml version. This is the cheap
+      # half of RELEASE.md: it cannot publish, it can only refuse a lie.
+      - name: Tag matches Cargo.toml (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+          echo "tag=$tag Cargo.toml=$ver"
+          test "$tag" = "$ver"
 
   compat:
     name: subset compatibility with the full SDK
