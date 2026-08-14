@@ -9,7 +9,7 @@ exclude = ["compat-tests"]
 
 [package]
 name = "aqua-rs-sdk-core"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "Apache-2.0"
 description = "Minimal, WASM-free core of the Aqua protocol SDK: anchor, object, and template primitives with base signatures and the agentic audit-trail templates."
