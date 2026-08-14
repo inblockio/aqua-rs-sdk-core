@@ -254,14 +254,62 @@ feature branch).
       `create_object_validated` + imported trees rather than restoring
       implicit resolution.
 - [ ] `cargo test` exits 0.
-- [ ] Commit.
+- [x] Commit. `b4d0fc2` on the registry branch.
 
 ## Orchestrator notes
 
 - Execute via one subagent per task, sequential where the depends-on
-  edge exists (1 → 2, 1 → 3 → 4). Task 2 and Task 3 may run in
-  parallel after Task 1.
-- Orchestrator re-runs the verification battery before declaring
-  done; does not trust agent-reported exit codes.
-- B10 is not a task.
+  edge exists (1 → 2, 1 → 3 → 4). Task 2 and Task 3 ran in parallel
+  after Task 1.
+- Orchestrator re-ran the verification battery before declaring done.
+- B10 is not a task (skipped).
 - Do not push; do not merge to `main`. Report at the end for review.
+
+## Audit addendum (2026-08-14)
+
+Executed unsupervised. Branches only; nothing pushed or merged.
+
+| Task | Repo | Commits | Agent |
+|---|---|---|---|
+| T1 A1–A5 | aqua-rs-sdk | `36a8b65` | 01a0006c |
+| T2 B6 | aqua-rs-sdk | `1d8955a`, changelog `7b44885` | 01a00074-f861 |
+| T3 A4+B11 | aqua-rs-sdk-core | `5bc449a` `0721dba` `79506d1`, handover `4e65964` | 01a00074-f861…34527 |
+| T4 H8 | aqua-template-registry | `b4d0fc2` | 01a00082 |
+
+### Hypothesis trace (orchestrator-verified)
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| H1 | Confirmed | `cmp` 11/11 silent; `verify-templates` “All 19 templates verified”; ledger rows match |
+| H2 | Confirmed | `rg AuditGusto\|audit_gusto` empty under `src/`; only a ledger-header mention of the rename |
+| H3 | Confirmed | Ancestry tests rewritten; example “compute-skip note: no” on all 10 trees |
+| H4 | Confirmed | No new template JSON beyond the T5 rename; A5 in CHANGELOG |
+| H5 | Confirmed | Full SDK `--lib` 1158 passed; 6 `validated` tests; `create_object` still skips custom types |
+| H6 | Confirmed | Orchestrator: `cargo test --manifest-path compat-tests/Cargo.toml` — 10 passed, divergence test gone |
+| H7 | Confirmed | Orchestrator: `audit_hashes_are_not_built_in`, `create_object_does_not_schema_validate_audit_hashes` pass; catalog 5 / shipped 8 |
+| H8 | Confirmed | Orchestrator: `imported_audit_set_v1_creates_t1_via_create_object_validated` ok |
+| H9 | Confirmed | Example loads registry seed; spec §8.1 is the 5-entry catalog; fork sentence deleted |
+| H10 | Confirmed | `cmp` of 8 shared machinery/signature JSONs silent |
+
+### Acceptance criteria
+
+| # | Met? | Evidence |
+|---|------|----------|
+| AC1 | Yes | 11/11 `cmp`; T5 is `audit_api_response`; hashes = core ledger |
+| AC2 | Yes | A5 recorded; no new templates |
+| AC3 | Yes | `Aquafier::create_object_validated` on full SDK `1d8955a` |
+| AC4 | Yes | compat 10/10; divergence test deleted |
+| AC5 | Yes | catalog 5; fixtures remain; pin tests pass |
+| AC6 | Yes | registry default-suite test via real import path |
+| AC7 | Yes | example + authoring + BACKLOG + spec §8; B10 skipped with rationale |
+| AC8 | Yes | suites exit 0; no commit on `main` |
+
+### Discovered during execution
+
+1. **`regen-unsupported --check` now drifts** (exit 1). That is A7, excluded by direction. Not in CI. Running the regen would drop the old identity-rooted hashes from `unsupported.rs` (they are no longer in the full SDK catalog) and would keep the new hashes out of the table (core still has fixture JSON, so they hash-match). Leave as-is until A7 is allowed.
+2. **Merge order is load-bearing.** Core's new compat tests require the re-rooted full SDK. Merge `aqua-rs-sdk` first, then core, then the registry.
+3. **B8a comment** still describes the pre-harmonisation reason `include_builtin_templates` defaults true. After B11 the audit family is not built-in, so the default no longer carries those templates; exports must pass sources. The example does. No behaviour bug.
+
+### B10 verdict (orchestrator)
+
+SKIP. Cosmetic hashing-path signature change. One-concern-per-change. Revisit only if both `merkle.rs` copies are being rewritten anyway.
