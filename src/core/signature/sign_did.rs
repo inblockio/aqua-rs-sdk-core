@@ -193,25 +193,18 @@ mod generate_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn generated_key_signs_a_tree_that_verifies() {
-        use crate::schema::{AquaTreeWrapper, SigningCredentials};
-        use crate::{primitives::RevisionLink, schema::template::BuiltInTemplate};
+        use crate::schema::{AquaTreeWrapper, FileData, SigningCredentials};
+        use std::path::PathBuf;
 
-        let (secret, did) = generate_ed25519();
+        let (secret, _did) = generate_ed25519();
         let aquafier = crate::Aquafier::new();
+        let file = FileData::new(
+            "signed.txt".into(),
+            b"generated-key payload".to_vec(),
+            PathBuf::from("signed.txt"),
+        );
         let tree = aquafier
-            .create_object(
-                RevisionLink::from_bytes(
-                    crate::schema::templates::AuditUserTurnMarker::TEMPLATE_LINK,
-                ),
-                None,
-                serde_json::json!({
-                    "signer_did": did,
-                    "session_id": "generated-key-session",
-                    "turn_index": 0,
-                    "opens_at": 1754500000u64,
-                }),
-                None,
-            )
+            .create_genesis_revision(file.clone(), None)
             .unwrap();
         let signed = aquafier
             .sign_aqua_tree(
@@ -225,7 +218,10 @@ mod generate_tests {
             .await
             .unwrap();
         let result = aquafier
-            .verify_aqua_tree(AquaTreeWrapper::new(signed.aqua_tree, None, None), vec![])
+            .verify_aqua_tree(
+                AquaTreeWrapper::new(signed.aqua_tree, Some(file.clone()), None),
+                vec![file],
+            )
             .await
             .unwrap();
         assert!(

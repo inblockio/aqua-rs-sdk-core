@@ -625,24 +625,24 @@ impl Aquafier {
     }
 
     /// The verification catalog as data: `(name, bare 32-byte digest)` for
-    /// every built-in template, sorted by name.
+    /// every built-in template, sorted by name (`file` plus the four concrete
+    /// signature templates).
     ///
     /// Same set as [`builtin_templates`](Aquafier::builtin_templates), without
     /// parsing the template bodies. See
     /// [`shipped_template_hashes`](Aquafier::shipped_template_hashes) for the
-    /// full shipped set.
+    /// 8 contract templates.
     pub fn builtin_template_hashes() -> &'static [(&'static str, [u8; 32])] {
         crate::core::builtin_template_hashes()
     }
 
-    /// Every template this crate ships, as `(name, bare 32-byte digest)`
-    /// sorted by name: the machine-readable form of the hash ledger in
-    /// `tests/audit_template_hashes.txt`, which a unit test keeps in step.
+    /// The 8 contract templates this crate ships, as `(name, bare 32-byte
+    /// digest)` sorted by name: the machinery and signature templates.
     ///
     /// Superset of [`builtin_template_hashes`](Aquafier::builtin_template_hashes):
-    /// it also lists `template_meta`, `anchor_template`, `signature_base`,
-    /// `audit_round_anchor`, and `audit_session_close`, which ship but are not
-    /// resolved as object types.
+    /// it also lists `template_meta`, `anchor_template`, and `signature_base`,
+    /// which ship but are not resolved as object types. The 11 audit identities
+    /// are fixtures (see `tests/audit_template_hashes.txt`), not this set.
     pub fn shipped_template_hashes() -> &'static [(&'static str, [u8; 32])] {
         crate::core::shipped_template_hashes()
     }

@@ -1,11 +1,16 @@
 # aqua-rs-sdk-core template hash ledger (bare SHA3-256 digests)
 #
-# 2026-08-07: essential-core restructure. The audit family is re-rooted at
-# audit_artifact (identity_base removed); T5 is audit_api_response; the
-# T4/T5 descriptions are scrubbed. All 11 audit hashes are deliberate
-# forks from the full aqua-rs-sdk. The machinery and signature templates
-# (template_meta, anchor_template, signature_*, file) remain byte-identical
-# to the full SDK. Regenerate with:
+# Two classes, one file:
+#   * machinery/signature (template_meta, anchor_template, signature_*, file)
+#     = the crate contract. These are what shipped_template_hashes() returns.
+#   * audit family (audit_artifact, T1–T8, audit_round_anchor,
+#     audit_session_close) = fixtures matching the registry set
+#     (aqua-template-registry seed/audit-set-v1) and the full SDK. They are
+#     NOT built-in. Pin them here so verify-templates keeps the hashes honest.
+#
+# 2026-08-14: A1–A5 landed; the 11 audit identities are byte-identical
+# with the full SDK. B11 dropped them from the verification catalog.
+# Regenerate hash constants with:
 #   cargo run --features native --bin verify-templates
 #
 anchor_template         0x479a304927c47f4308d027a858060ce287a9bdb45f2203f8130574a73511e899

@@ -125,14 +125,27 @@ mod tests {
     }
 
     #[test]
-    fn derived_audit_template_inherits_bounds() {
+    fn derived_audit_template_inherits_bounds_from_its_fixture() {
         use crate::schema::template::BuiltInTemplate;
-        use crate::schema::templates::AuditUserPrompt;
-        // AuditUserPrompt derives from audit_artifact and doesn't declare its
-        // own bounds, so resolution must walk ancestry and inherit
-        // audit_artifact's explicit bounds rather than falling through to
-        // identity_base or the permissive default.
-        let b = resolve_bounds(&AuditUserPrompt::TEMPLATE_LINK);
+        use crate::schema::templates::{AuditArtifact, AuditUserPrompt};
+        use crate::schema::Template;
+
+        // After B11, resolve_bounds only walks the catalog, so an audit
+        // hash falls through to permissive. The inheritance is still in
+        // the fixture JSON: the child declares no bounds of its own.
+        assert_eq!(
+            resolve_bounds(&AuditUserPrompt::TEMPLATE_LINK),
+            ObjectBounds::permissive(),
+            "audit hashes are not catalog members"
+        );
+
+        let child: Template = serde_json::from_str(AuditUserPrompt::TEMPLATE_JSON).unwrap();
+        assert!(
+            child.raw_bounds().is_none(),
+            "AuditUserPrompt must not declare its own bounds"
+        );
+        let root: Template = serde_json::from_str(AuditArtifact::TEMPLATE_JSON).unwrap();
+        let b = root.raw_bounds().expect("audit_artifact declares bounds");
         assert_eq!(b.max_chain_depth, 2, "should inherit audit_artifact bounds");
         assert_eq!(b.max_anchor_branches, 4);
         assert_eq!(b.max_signature_branches, 6);
@@ -141,25 +154,35 @@ mod tests {
     }
 
     #[test]
-    fn audit_family_declares_explicit_anchor_bounds() {
+    fn audit_family_fixture_declares_explicit_anchor_bounds() {
         use crate::schema::template::BuiltInTemplate;
         use crate::schema::templates::{AuditArtifact, AuditUserTurnMarker};
-        // audit_artifact declares explicit bounds — without them, resolution
-        // walks to identity_base and inherits max_anchor_branches: 0, which
-        // rejects the round-seal anchor on audit trees.
-        let b = resolve_bounds(&AuditArtifact::TEMPLATE_LINK);
+        use crate::schema::Template;
+
+        assert_eq!(
+            resolve_bounds(&AuditArtifact::TEMPLATE_LINK),
+            ObjectBounds::permissive(),
+            "audit_artifact is a fixture, not a catalog member"
+        );
+        assert_eq!(
+            resolve_bounds(&AuditUserTurnMarker::TEMPLATE_LINK),
+            ObjectBounds::permissive(),
+            "T1 is a fixture, not a catalog member"
+        );
+
+        let root: Template = serde_json::from_str(AuditArtifact::TEMPLATE_JSON).unwrap();
+        let b = root.raw_bounds().expect("audit_artifact declares bounds");
         assert_eq!(b.max_anchor_branches, 4);
         assert_eq!(b.max_signature_branches, 6);
         assert_eq!(b.max_timestamp_branches, 4);
         assert_eq!(b.max_chain_depth, 2);
         assert_eq!(b.max_total_revisions, 16);
-        // Every derived audit template inherits them (nearest-declaration-wins).
-        let b = resolve_bounds(&AuditUserTurnMarker::TEMPLATE_LINK);
-        assert_eq!(
-            b.max_anchor_branches, 4,
-            "T1 must inherit audit_artifact bounds, not identity_base's 0"
+
+        let t1: Template = serde_json::from_str(AuditUserTurnMarker::TEMPLATE_JSON).unwrap();
+        assert!(
+            t1.raw_bounds().is_none(),
+            "T1 inherits audit_artifact bounds rather than declaring its own"
         );
-        assert_eq!(b.max_total_revisions, 16);
     }
 
     #[test]

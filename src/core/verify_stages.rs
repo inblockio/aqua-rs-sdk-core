@@ -25,15 +25,6 @@ pub(crate) static BUILTIN_TEMPLATE_NAMES: LazyLock<HashMap<[u8; 32], &'static st
             (SignatureEd25519::TEMPLATE_LINK, "signature_ed25519"),
             (SignatureP256::TEMPLATE_LINK, "signature_p256"),
             (SignatureWebauthn::TEMPLATE_LINK, "signature_webauthn"),
-            (AuditArtifact::TEMPLATE_LINK, "audit_artifact"),
-            (AuditUserTurnMarker::TEMPLATE_LINK, "audit_user_turn_marker"),
-            (AuditUserPrompt::TEMPLATE_LINK, "audit_user_prompt"),
-            (AuditAgentThinking::TEMPLATE_LINK, "audit_agent_thinking"),
-            (AuditAgentToolCall::TEMPLATE_LINK, "audit_agent_tool_call"),
-            (AuditApiResponse::TEMPLATE_LINK, "audit_api_response"),
-            (AuditToolResult::TEMPLATE_LINK, "audit_tool_result"),
-            (AuditHitlApproval::TEMPLATE_LINK, "audit_hitl_approval"),
-            (AuditAgentResponse::TEMPLATE_LINK, "audit_agent_response"),
         ]
         .into_iter()
         .collect()
@@ -94,42 +85,6 @@ static BUILTIN_TEMPLATES: LazyLock<HashMap<[u8; 32], Template>> = LazyLock::new(
         (
             SignatureWebauthn::TEMPLATE_LINK,
             include_str!("../schema/templates/signature_webauthn.json"),
-        ),
-        (
-            AuditArtifact::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_artifact.json"),
-        ),
-        (
-            AuditUserTurnMarker::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_user_turn_marker.json"),
-        ),
-        (
-            AuditUserPrompt::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_user_prompt.json"),
-        ),
-        (
-            AuditAgentThinking::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_agent_thinking.json"),
-        ),
-        (
-            AuditAgentToolCall::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_agent_tool_call.json"),
-        ),
-        (
-            AuditApiResponse::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_api_response.json"),
-        ),
-        (
-            AuditToolResult::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_tool_result.json"),
-        ),
-        (
-            AuditHitlApproval::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_hitl_approval.json"),
-        ),
-        (
-            AuditAgentResponse::TEMPLATE_LINK,
-            include_str!("../schema/templates/audit_agent_response.json"),
         ),
     ];
 
@@ -255,17 +210,6 @@ static SHIPPED_TEMPLATES: &[(&str, &str, [u8; 32])] = {
     }
     shipped! {
         "anchor_template" => AnchorTemplate,
-        "audit_agent_response" => AuditAgentResponse,
-        "audit_agent_thinking" => AuditAgentThinking,
-        "audit_agent_tool_call" => AuditAgentToolCall,
-        "audit_api_response" => AuditApiResponse,
-        "audit_artifact" => AuditArtifact,
-        "audit_hitl_approval" => AuditHitlApproval,
-        "audit_round_anchor" => AuditRoundAnchor,
-        "audit_session_close" => AuditSessionClose,
-        "audit_tool_result" => AuditToolResult,
-        "audit_user_prompt" => AuditUserPrompt,
-        "audit_user_turn_marker" => AuditUserTurnMarker,
         "file" => File,
         "signature_base" => SignatureBase,
         "signature_ed25519" => SignatureEd25519,
@@ -324,26 +268,26 @@ static SHIPPED_TEMPLATE_HASHES: LazyLock<Vec<(&'static str, [u8; 32])>> = LazyLo
 /// [`RevisionLink::bare_digest`](crate::primitives::RevisionLink::bare_digest)
 /// for the reverse.
 ///
-/// Use [`shipped_template_hashes`] instead when you want everything this crate
-/// ships, including the templates that are deliberately outside the catalog
-/// (`template_meta`, `anchor_template`, `signature_base`, `audit_round_anchor`,
-/// `audit_session_close`).
+/// Use [`shipped_template_hashes`] instead when you want the 8 contract
+/// templates (this catalog plus `template_meta`, `anchor_template`,
+/// `signature_base`). The 11 audit identities live in
+/// `tests/audit_template_hashes.txt` as fixture pins matching the registry
+/// set / full SDK; they are not part of either accessor.
 pub fn builtin_template_hashes() -> &'static [(&'static str, [u8; 32])] {
     &BUILTIN_TEMPLATE_HASHES
 }
 
-/// Every template this crate ships, as `(name, bare 32-byte SHA3-256 digest)`
-/// sorted by name.
+/// The 8 contract templates this crate ships, as `(name, bare 32-byte
+/// SHA3-256 digest)` sorted by name.
 ///
-/// This is the machine-readable form of the hash ledger in
-/// `tests/audit_template_hashes.txt`, which publishers previously had to parse
-/// by hand; a unit test asserts the two agree entry for entry, in both
-/// directions, so neither can drift.
+/// These are the machinery and signature templates: the verification catalog
+/// plus `template_meta`, `anchor_template`, and `signature_base`. A unit test
+/// asserts they agree with the contract rows of
+/// `tests/audit_template_hashes.txt`.
 ///
-/// Superset of [`builtin_template_hashes`]: it also carries the five shipped
-/// templates that are not in the verification catalog because nothing resolves
-/// an object type through them (`template_meta`, `anchor_template`,
-/// `signature_base`, `audit_round_anchor`, `audit_session_close`).
+/// Superset of [`builtin_template_hashes`]. The 11 audit identities are
+/// fixtures, not this set — they are pinned in the same ledger file and
+/// must be retrieved from the template registry.
 pub fn shipped_template_hashes() -> &'static [(&'static str, [u8; 32])] {
     &SHIPPED_TEMPLATE_HASHES
 }
@@ -999,19 +943,28 @@ mod tests {
     }
 
     #[test]
-    fn shipped_template_hashes_match_the_ledger_file() {
-        // The ledger is the published artifact; the accessor is what code
-        // reads. Entry for entry, in both directions, so an addition or a
-        // removal on either side fails here instead of shipping a lie.
+    fn shipped_template_hashes_match_the_contract_ledger_rows() {
+        // The ledger holds two classes: the 8 contract templates (this
+        // accessor) and the 11 audit fixtures (pinned separately). An
+        // addition or a removal on either side of the contract split
+        // fails here instead of shipping a lie.
         let accessor: Vec<(String, [u8; 32])> = shipped_template_hashes()
             .iter()
             .map(|(name, digest)| (name.to_string(), *digest))
             .collect();
+        let contract: Vec<(String, [u8; 32])> = ledger_entries()
+            .into_iter()
+            .filter(|(name, _)| !name.starts_with("audit_"))
+            .collect();
         assert_eq!(
-            accessor,
-            ledger_entries(),
-            "shipped_template_hashes() and tests/audit_template_hashes.txt disagree; \
-             regenerate the ledger with `cargo run --features native --bin verify-templates`"
+            accessor, contract,
+            "shipped_template_hashes() and the contract rows of \
+             tests/audit_template_hashes.txt disagree"
+        );
+        assert_eq!(
+            accessor.len(),
+            8,
+            "contract set is the 8 machinery+signature templates"
         );
     }
 
@@ -1033,7 +986,7 @@ mod tests {
     }
 
     #[test]
-    fn builtin_hashes_are_the_catalog_and_shipped_adds_exactly_the_uncached_five() {
+    fn builtin_hashes_are_the_catalog_and_shipped_adds_exactly_the_uncached_three() {
         // The catalog accessor must equal the resolution cache itself.
         let catalog: std::collections::HashSet<[u8; 32]> =
             builtin_template_hashes().iter().map(|(_, d)| *d).collect();
@@ -1041,8 +994,13 @@ mod tests {
             BUILTIN_TEMPLATES.keys().copied().collect();
         assert_eq!(catalog, cache, "builtin_template_hashes() is not the cache");
         assert_eq!(builtin_template_hashes().len(), BUILTIN_TEMPLATES.len());
+        assert_eq!(
+            builtin_template_hashes().len(),
+            5,
+            "catalog is file + 4 concrete signature templates"
+        );
 
-        // And the shipped set adds exactly the five deliberate exclusions
+        // And the shipped set adds exactly the three deliberate exclusions
         // (kept in step with builtin_caches_are_complete's KNOWN_UNCACHED).
         let mut extra: Vec<&str> = shipped_template_hashes()
             .iter()
@@ -1052,14 +1010,9 @@ mod tests {
         extra.sort_unstable();
         assert_eq!(
             extra,
-            vec![
-                "anchor_template",
-                "audit_round_anchor",
-                "audit_session_close",
-                "signature_base",
-                "template_meta",
-            ]
+            vec!["anchor_template", "signature_base", "template_meta",]
         );
+        assert_eq!(shipped_template_hashes().len(), 8);
     }
 
     #[test]
@@ -1172,15 +1125,19 @@ mod tests {
         //   - signature_base / anchor_template: abstract foundations; signatures
         //     resolve via SIGNATURE_TEMPLATE_HASHES and anchors are not object
         //     templates.
-        //   - timestamp: legacy abstract timestamp (no BuiltInTemplate impl),
-        //     superseded by timestamp_base.
-        //   - audit_round_anchor / audit_session_close: audit anchor / lifecycle
-        //     templates not wired into content resolution (pre-existing; out of
-        //     WS7 scope, recorded here so the exclusion set stays explicit).
-        const KNOWN_UNCACHED: &[&str] = &[
-            "template_meta",
-            "signature_base",
-            "anchor_template",
+        const KNOWN_UNCACHED: &[&str] = &["template_meta", "signature_base", "anchor_template"];
+        // Third class: on-disk fixtures matching the registry set / full SDK.
+        // Not catalog, not "forgotten uncached built-ins".
+        const KNOWN_FIXTURE: &[&str] = &[
+            "audit_artifact",
+            "audit_user_turn_marker",
+            "audit_user_prompt",
+            "audit_agent_thinking",
+            "audit_agent_tool_call",
+            "audit_api_response",
+            "audit_tool_result",
+            "audit_hitl_approval",
+            "audit_agent_response",
             "audit_round_anchor",
             "audit_session_close",
         ];
@@ -1193,7 +1150,10 @@ mod tests {
                 continue;
             }
             let stem = path.file_stem().unwrap().to_str().unwrap().to_string();
-            if stem.ends_with("_schema") || KNOWN_UNCACHED.contains(&stem.as_str()) {
+            if stem.ends_with("_schema")
+                || KNOWN_UNCACHED.contains(&stem.as_str())
+                || KNOWN_FIXTURE.contains(&stem.as_str())
+            {
                 continue;
             }
 
@@ -1217,7 +1177,136 @@ mod tests {
             checked += 1;
         }
 
-        assert!(checked > 0, "no templates were checked");
+        assert_eq!(
+            checked, 5,
+            "catalog completeness must cover file + 4 signature templates"
+        );
+    }
+
+    #[test]
+    fn audit_hashes_are_not_built_in() {
+        use crate::schema::templates::*;
+
+        let fixtures: &[(&str, [u8; 32])] = &[
+            ("audit_artifact", AuditArtifact::TEMPLATE_LINK),
+            ("audit_user_turn_marker", AuditUserTurnMarker::TEMPLATE_LINK),
+            ("audit_user_prompt", AuditUserPrompt::TEMPLATE_LINK),
+            ("audit_agent_thinking", AuditAgentThinking::TEMPLATE_LINK),
+            ("audit_agent_tool_call", AuditAgentToolCall::TEMPLATE_LINK),
+            ("audit_api_response", AuditApiResponse::TEMPLATE_LINK),
+            ("audit_tool_result", AuditToolResult::TEMPLATE_LINK),
+            ("audit_hitl_approval", AuditHitlApproval::TEMPLATE_LINK),
+            ("audit_agent_response", AuditAgentResponse::TEMPLATE_LINK),
+            ("audit_round_anchor", AuditRoundAnchor::TEMPLATE_LINK),
+            ("audit_session_close", AuditSessionClose::TEMPLATE_LINK),
+        ];
+        for (name, digest) in fixtures {
+            let link = RevisionLink::from_bytes(*digest);
+            assert!(
+                resolve_builtin_template(&link).is_none(),
+                "{name} must not resolve from the verification catalog"
+            );
+            assert!(
+                !is_builtin_template_link(&link),
+                "{name} must not be a built-in template link"
+            );
+            assert!(
+                !BUILTIN_TEMPLATES.contains_key(digest),
+                "{name} must not be in BUILTIN_TEMPLATES"
+            );
+            assert!(
+                builtin_template_tree(digest).is_none(),
+                "{name} must not produce a built-in template tree"
+            );
+        }
+        assert_eq!(fixtures.len(), 11);
+        assert_eq!(builtin_template_hashes().len(), 5);
+        assert_eq!(shipped_template_hashes().len(), 8);
+    }
+
+    #[test]
+    fn fixture_audit_hashes_match_the_ledger_and_their_json() {
+        use crate::schema::templates::*;
+
+        let fixtures: &[(&str, &str, [u8; 32])] = &[
+            (
+                "audit_agent_response",
+                AuditAgentResponse::TEMPLATE_JSON,
+                AuditAgentResponse::TEMPLATE_LINK,
+            ),
+            (
+                "audit_agent_thinking",
+                AuditAgentThinking::TEMPLATE_JSON,
+                AuditAgentThinking::TEMPLATE_LINK,
+            ),
+            (
+                "audit_agent_tool_call",
+                AuditAgentToolCall::TEMPLATE_JSON,
+                AuditAgentToolCall::TEMPLATE_LINK,
+            ),
+            (
+                "audit_api_response",
+                AuditApiResponse::TEMPLATE_JSON,
+                AuditApiResponse::TEMPLATE_LINK,
+            ),
+            (
+                "audit_artifact",
+                AuditArtifact::TEMPLATE_JSON,
+                AuditArtifact::TEMPLATE_LINK,
+            ),
+            (
+                "audit_hitl_approval",
+                AuditHitlApproval::TEMPLATE_JSON,
+                AuditHitlApproval::TEMPLATE_LINK,
+            ),
+            (
+                "audit_round_anchor",
+                AuditRoundAnchor::TEMPLATE_JSON,
+                AuditRoundAnchor::TEMPLATE_LINK,
+            ),
+            (
+                "audit_session_close",
+                AuditSessionClose::TEMPLATE_JSON,
+                AuditSessionClose::TEMPLATE_LINK,
+            ),
+            (
+                "audit_tool_result",
+                AuditToolResult::TEMPLATE_JSON,
+                AuditToolResult::TEMPLATE_LINK,
+            ),
+            (
+                "audit_user_prompt",
+                AuditUserPrompt::TEMPLATE_JSON,
+                AuditUserPrompt::TEMPLATE_LINK,
+            ),
+            (
+                "audit_user_turn_marker",
+                AuditUserTurnMarker::TEMPLATE_JSON,
+                AuditUserTurnMarker::TEMPLATE_LINK,
+            ),
+        ];
+        let ledger: std::collections::HashMap<String, [u8; 32]> =
+            ledger_entries().into_iter().collect();
+        for (name, json, digest) in fixtures {
+            assert_eq!(
+                ledger.get(*name),
+                Some(digest),
+                "{name}: fixture pin drifted from the ledger"
+            );
+            let template: Template = serde_json::from_str(json)
+                .unwrap_or_else(|e| panic!("{name}: TEMPLATE_JSON does not parse: {e}"));
+            let link = template.calculate_link(HashType::Sha3_256).unwrap();
+            assert_eq!(
+                template_digest_key(link.as_ref()),
+                Some(*digest),
+                "{name}: TEMPLATE_LINK does not match the hash of TEMPLATE_JSON"
+            );
+            assert!(
+                !BUILTIN_TEMPLATES.contains_key(digest),
+                "{name} is a fixture, not a catalog member"
+            );
+        }
+        assert_eq!(fixtures.len(), 11);
     }
 
     #[test]
@@ -1326,9 +1415,9 @@ mod tests {
 
     #[test]
     fn test_builtin_template_tree_root_has_one_revision() {
-        // AuditArtifact is a root template — single Template revision, no Anchor
-        let tree = builtin_template_tree(&templates::AuditArtifact::TEMPLATE_LINK)
-            .expect("AuditArtifact should produce a tree");
+        // File is a root template — single Template revision, no Anchor
+        let tree = builtin_template_tree(&templates::File::TEMPLATE_LINK)
+            .expect("File should produce a tree");
         assert_eq!(
             tree.revisions.len(),
             1,
@@ -1344,10 +1433,11 @@ mod tests {
 
     #[test]
     fn test_builtin_template_tree_derived_is_single_revision() {
-        // AuditUserPrompt derives from AuditArtifact, but is still a single Template revision.
-        // Hierarchy is expressed via derives_from/ancestry, not via Anchor.
-        let tree = builtin_template_tree(&templates::AuditUserPrompt::TEMPLATE_LINK)
-            .expect("AuditUserPrompt should produce a tree");
+        // SignatureEd25519 derives from SignatureBase, but is still a single
+        // Template revision. Hierarchy is expressed via derives_from/ancestry,
+        // not via Anchor.
+        let tree = builtin_template_tree(&templates::SignatureEd25519::TEMPLATE_LINK)
+            .expect("SignatureEd25519 should produce a tree");
         assert_eq!(
             tree.revisions.len(),
             1,
@@ -1363,18 +1453,26 @@ mod tests {
 
     #[test]
     fn test_builtin_template_tree_chain_length() {
-        // AuditUserTurnMarker: identity_base → audit_artifact → audit_user_turn_marker
-        // (ancestry depth 2), so the resolved chain has 3 template trees.
-        let chain = builtin_template_tree_chain(&templates::AuditUserTurnMarker::TEMPLATE_LINK);
+        let file_chain = builtin_template_tree_chain(&templates::File::TEMPLATE_LINK);
+        assert_eq!(file_chain.len(), 1, "File is a catalog root");
+
+        // signature_base is shipped but not catalog, so the chain is the leaf.
+        let sig_chain = builtin_template_tree_chain(&templates::SignatureEd25519::TEMPLATE_LINK);
         assert_eq!(
-            chain.len(),
-            2,
-            "AuditUserTurnMarker chain should have 2 trees"
+            sig_chain.len(),
+            1,
+            "SignatureEd25519's ancestor is uncached"
         );
-        // All template trees are single-revision (Template only, no Anchor)
-        for (i, tree) in chain.iter().enumerate() {
+        for (i, tree) in sig_chain.iter().enumerate() {
             assert_eq!(tree.revisions.len(), 1, "tree {i} should have 1 revision");
         }
+
+        let audit_chain =
+            builtin_template_tree_chain(&templates::AuditUserTurnMarker::TEMPLATE_LINK);
+        assert!(
+            audit_chain.is_empty(),
+            "audit family is a fixture, not a catalog member"
+        );
     }
 
     #[test]

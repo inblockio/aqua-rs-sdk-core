@@ -343,7 +343,9 @@ mod tests {
     use crate::core::template::create_derived_template_util;
     use crate::primitives::Method;
     use crate::schema::template::BuiltInTemplate;
-    use crate::schema::templates::{AuditRoundAnchor, AuditUserTurnMarker, TemplateMeta};
+    use crate::schema::templates::{
+        AuditArtifact, AuditRoundAnchor, AuditUserTurnMarker, TemplateMeta,
+    };
     use crate::schema::{AquaTreeWrapper, SigningCredentials};
     use crate::Aquafier;
     use serde_json::json;
@@ -538,31 +540,38 @@ mod tests {
 
     #[test]
     fn missing_templates_is_empty_for_builtin_types() {
-        let tree = Aquafier::new()
-            .create_object(
-                RevisionLink::from_bytes(AuditUserTurnMarker::TEMPLATE_LINK),
-                None,
-                json!({
-                    "signer_did": "did:key:z6MkExampleServer",
-                    "session_id": "lint-session",
-                    "turn_index": 0,
-                    "opens_at": 1754500000u64,
-                }),
-                None,
-            )
-            .unwrap();
+        use crate::core::genesis::create_genesis_revision;
+        use crate::schema::FileData;
+        use std::path::PathBuf;
+
+        let file = FileData::new(
+            "lint.txt".into(),
+            b"built-in".to_vec(),
+            PathBuf::from("lint.txt"),
+        );
+        let tree = create_genesis_revision(file, Method::Scalar).unwrap();
         assert!(
             missing_templates(&tree).is_empty(),
-            "built-in types resolve from the catalog"
+            "built-in types (file) resolve from the catalog"
         );
     }
 
     // ── audit family: embedding must not disturb the declared bounds ──────
 
-    async fn signed_turn_marker_tree() -> Tree {
+    async fn signed_turn_marker_tree() -> (Tree, Vec<Tree>) {
         let aquafier = Aquafier::new();
+        let artifact: Template = serde_json::from_str(AuditArtifact::TEMPLATE_JSON).unwrap();
+        let t1: Template = serde_json::from_str(AuditUserTurnMarker::TEMPLATE_JSON).unwrap();
+        let sources = vec![
+            aquafier
+                .template_tree(&artifact, Some("audit_artifact"))
+                .unwrap(),
+            aquafier
+                .template_tree(&t1, Some("audit_user_turn_marker"))
+                .unwrap(),
+        ];
         let tree = aquafier
-            .create_object(
+            .create_object_validated(
                 RevisionLink::from_bytes(AuditUserTurnMarker::TEMPLATE_LINK),
                 None,
                 json!({
@@ -572,9 +581,10 @@ mod tests {
                     "opens_at": 1754500000u64,
                 }),
                 None,
+                &sources,
             )
             .unwrap();
-        aquafier
+        let signed = aquafier
             .sign_aqua_tree(
                 AquaTreeWrapper::new(tree, None, None),
                 &SigningCredentials::Did {
@@ -585,22 +595,23 @@ mod tests {
             )
             .await
             .unwrap()
-            .aqua_tree
+            .aqua_tree;
+        (signed, sources)
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn signed_audit_tree_export_stays_within_declared_bounds() {
-        use crate::schema::bounds::resolve_bounds;
+        let (signed, sources) = signed_turn_marker_tree().await;
+        let exported = export_tree_util(&signed, &sources, &ExportOptions::default())
+            .expect("fixture sources supply the audit templates");
 
-        let signed = signed_turn_marker_tree().await;
-        let exported =
-            export_tree_util(&signed, &[], &ExportOptions::default()).expect("built-ins resolve");
-
-        // T1 plus its audit_artifact root, both built-in and both embedded
-        // because built-in is receiver-relative.
+        // T1 plus its audit_artifact root, both fixtures, both embedded.
         assert_eq!(embedded_template_count(&exported), 2);
 
-        let bounds = resolve_bounds(&AuditUserTurnMarker::TEMPLATE_LINK);
+        let artifact: Template = serde_json::from_str(AuditArtifact::TEMPLATE_JSON).unwrap();
+        let bounds = artifact
+            .raw_bounds()
+            .expect("audit_artifact declares bounds");
         assert_eq!(bounds.max_total_revisions, 16);
         assert!(
             exported.revisions.len() <= bounds.max_total_revisions as usize,
@@ -615,13 +626,17 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn non_builtin_only_embeds_the_uncached_template_alone() {
-        // audit_round_anchor ships with this crate but is deliberately NOT in
-        // the verification catalog, while its audit_artifact root is. The two
-        // flags therefore have visibly different outputs on the same tree.
+    async fn exported_audit_round_anchor_embeds_the_fixture_root() {
+        // After B11 neither audit_round_anchor nor its audit_artifact root
+        // is in the catalog. Export needs both fixtures as sources; both
+        // export flags embed both (neither is a built-in).
         let template: Template = serde_json::from_str(AuditRoundAnchor::TEMPLATE_JSON).unwrap();
+        let artifact: Template = serde_json::from_str(AuditArtifact::TEMPLATE_JSON).unwrap();
         let link = template.calculate_link(HashType::Sha3_256).unwrap();
-        let source = template_source_tree(&[&template]);
+        let sources = [
+            template_source_tree(&[&template]),
+            template_source_tree(&[&artifact]),
+        ];
 
         let payload = json!({
             "signer_did": "did:key:z6MkExampleServer",
@@ -634,27 +649,23 @@ mod tests {
             "closed_at": 1754500008u64,
         });
         let tree = Aquafier::new()
-            .create_object(link, None, payload, None)
+            .create_object_validated(link, None, payload, None, &sources)
             .unwrap();
 
-        let full = export_tree_util(&tree, &[source.clone()], &ExportOptions::default()).unwrap();
+        let full = export_tree_util(&tree, &sources, &ExportOptions::default()).unwrap();
         assert_eq!(
             embedded_template_count(&full),
             2,
-            "default export embeds the round anchor and its built-in root"
+            "default export embeds the round anchor and its fixture root"
         );
         assert!(verify_standalone(&wire_round_trip(&full)).await);
 
-        let lean = export_tree_util(&tree, &[source], &ExportOptions::non_builtin_only()).unwrap();
+        let lean = export_tree_util(&tree, &sources, &ExportOptions::non_builtin_only()).unwrap();
         assert_eq!(
             embedded_template_count(&lean),
-            1,
-            "non-builtin-only export leaves audit_artifact to the receiver's catalog"
+            2,
+            "non-builtin-only also embeds both: neither is a catalog member"
         );
-        assert!(
-            verify_standalone(&wire_round_trip(&lean)).await,
-            "this crate is a receiver that holds audit_artifact, so the lean \
-             export still verifies here"
-        );
+        assert!(verify_standalone(&wire_round_trip(&lean)).await);
     }
 }

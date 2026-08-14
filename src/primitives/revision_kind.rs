@@ -404,9 +404,9 @@ mod template_meta_constant_tests {
 
     #[test]
     fn every_shipped_template_declares_it() {
-        // Every template JSON this crate ships carries exactly this string as
-        // its revision_type, which is what makes the constant safe to paste.
-        // The single exception is template_meta itself: being the
+        // Every contract template JSON this crate ships carries exactly this
+        // string as its revision_type, which is what makes the constant safe
+        // to paste. The single exception is template_meta itself: being the
         // template-of-templates, it cannot name itself recursively and carries
         // the genesis bootstrap value instead (see GENESIS_TYPE_HASH).
         let bootstrap = format!(
@@ -427,6 +427,30 @@ mod template_meta_constant_tests {
             }
             checked += 1;
         }
-        assert_eq!(checked, 19, "expected every shipped template to be checked");
+        assert_eq!(checked, 8, "expected every contract template to be checked");
+
+        // Fixture audit JSONs on disk must declare it too (they are not in
+        // shipped_templates, but they remain hash-pinned type identities).
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/schema/templates");
+        let mut fixtures = 0usize;
+        for entry in std::fs::read_dir(&dir).expect("read templates dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let stem = path.file_stem().unwrap().to_str().unwrap().to_string();
+            if !stem.starts_with("audit_") {
+                continue;
+            }
+            let json = std::fs::read_to_string(&path).expect("read fixture json");
+            let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                parsed["revision_type"].as_str().unwrap(),
+                TEMPLATE_META_REVISION_TYPE,
+                "{stem} fixture declares a different revision_type"
+            );
+            fixtures += 1;
+        }
+        assert_eq!(fixtures, 11, "expected every audit fixture to be checked");
     }
 }

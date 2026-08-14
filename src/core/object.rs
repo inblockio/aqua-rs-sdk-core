@@ -492,8 +492,10 @@ pub fn verify_object_sync(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::template::template_tree_util;
     use crate::schema::template::BuiltInTemplate;
-    use crate::schema::templates::AuditUserTurnMarker;
+    use crate::schema::templates::{AuditArtifact, AuditUserTurnMarker};
+    use crate::schema::Template;
 
     fn turn_marker_template_link() -> RevisionLink {
         RevisionLink::from_bytes(AuditUserTurnMarker::TEMPLATE_LINK)
@@ -508,14 +510,25 @@ mod tests {
         })
     }
 
+    /// T1 plus its audit_artifact ancestor, loaded from the on-disk fixtures.
+    fn turn_marker_fixture_sources() -> Vec<Tree> {
+        let artifact: Template = serde_json::from_str(AuditArtifact::TEMPLATE_JSON).unwrap();
+        let child: Template = serde_json::from_str(AuditUserTurnMarker::TEMPLATE_JSON).unwrap();
+        vec![
+            template_tree_util(&artifact, Some("audit_artifact")).unwrap(),
+            template_tree_util(&child, Some("audit_user_turn_marker")).unwrap(),
+        ]
+    }
+
     #[test]
     fn valid_payload_succeeds() {
-        let result = create_object_util(
+        let result = create_object_validated_util(
             turn_marker_template_link(),
             None,
             valid_payload(),
             Method::Scalar,
             HashType::Sha3_256,
+            &turn_marker_fixture_sources(),
         );
         assert!(result.is_ok(), "valid turn marker payload should succeed");
     }
@@ -524,12 +537,13 @@ mod tests {
     fn missing_required_field_fails() {
         let mut payload = valid_payload();
         payload.as_object_mut().unwrap().remove("session_id");
-        let result = create_object_util(
+        let result = create_object_validated_util(
             turn_marker_template_link(),
             None,
             payload,
             Method::Scalar,
             HashType::Sha3_256,
+            &turn_marker_fixture_sources(),
         );
         assert!(result.is_err(), "missing session_id should fail");
         let err_msg = format!("{}", result.unwrap_err());
@@ -547,12 +561,13 @@ mod tests {
             "extra_field".to_string(),
             serde_json::json!("should not be here"),
         );
-        let result = create_object_util(
+        let result = create_object_validated_util(
             turn_marker_template_link(),
             None,
             payload,
             Method::Scalar,
             HashType::Sha3_256,
+            &turn_marker_fixture_sources(),
         );
         assert!(
             result.is_err(),
@@ -588,16 +603,67 @@ mod tests {
     fn negative_turn_index_fails() {
         let mut payload = valid_payload();
         payload["turn_index"] = serde_json::json!(-1);
-        let result = create_object_util(
+        let result = create_object_validated_util(
             turn_marker_template_link(),
             None,
             payload,
             Method::Scalar,
             HashType::Sha3_256,
+            &turn_marker_fixture_sources(),
         );
         assert!(
             result.is_err(),
             "negative turn_index should fail (minimum: 0)"
+        );
+    }
+
+    #[test]
+    fn create_object_does_not_schema_validate_audit_hashes() {
+        // B11: audit types are not catalog members. create_object therefore
+        // cannot resolve the schema and accepts a deliberately invalid
+        // payload — the documented gap. create_object_validated without
+        // sources fails closed; with fixture sources it schema-checks.
+        let mut bad = valid_payload();
+        bad.as_object_mut().unwrap().remove("session_id");
+
+        assert!(
+            create_object_util(
+                turn_marker_template_link(),
+                None,
+                bad.clone(),
+                Method::Scalar,
+                HashType::Sha3_256,
+            )
+            .is_ok(),
+            "catalog miss must skip create_object validation"
+        );
+
+        let err = create_object_validated_util(
+            turn_marker_template_link(),
+            None,
+            bad.clone(),
+            Method::Scalar,
+            HashType::Sha3_256,
+            &[],
+        )
+        .expect_err("no sources, not a built-in");
+        assert!(
+            matches!(err, CreateObjectError::TemplateNotFound(_)),
+            "expected TemplateNotFound, got {err:?}"
+        );
+
+        let err = create_object_validated_util(
+            turn_marker_template_link(),
+            None,
+            bad,
+            Method::Scalar,
+            HashType::Sha3_256,
+            &turn_marker_fixture_sources(),
+        )
+        .expect_err("fixture sources enable schema check");
+        assert!(
+            matches!(err, CreateObjectError::SchemaViolation { .. }),
+            "expected SchemaViolation, got {err:?}"
         );
     }
 
@@ -718,8 +784,32 @@ mod tests {
             let link = template.calculate_link(HashType::Sha3_256).unwrap();
             let ancestor = template.ancestry().unwrap()[0].clone();
 
-            // audit_artifact IS a built-in here, so it resolves; to exercise the
-            // ancestor gap we need a custom parent that nobody supplies.
+            // After B11, audit_artifact is not a built-in: supplying only the
+            // child now fails for the real family too.
+            let child_only = create_object_validated_util(
+                link.clone(),
+                None,
+                serde_json::json!({
+                    "signer_did": "did:key:z6MkExampleServer",
+                    "session_id": "s",
+                    "turn_id": format!("0x1620{}", "a".repeat(64)),
+                    "turn_index": 0,
+                    "artifact_count": 1,
+                    "leaf_hashes": [format!("0x1620{}", "b".repeat(64))],
+                    "merkle_root": format!("0x{}", "c".repeat(64)),
+                    "closed_at": 1754500008u64,
+                }),
+                Method::Scalar,
+                HashType::Sha3_256,
+                &[template_tree_util(&template, None).unwrap()],
+            )
+            .expect_err("the ancestor is no longer a built-in");
+            assert!(matches!(
+                child_only,
+                CreateObjectError::AncestorTemplateNotFound { .. }
+            ));
+
+            // The same gap with a custom parent that nobody supplies.
             let orphan = Template::new_derived(
                 Method::Scalar,
                 serde_json::json!({
@@ -751,8 +841,12 @@ mod tests {
                 CreateObjectError::AncestorTemplateNotFound { .. }
             ));
 
-            // Sanity: the real audit_round_anchor resolves its built-in ancestor.
+            // Sanity: supplying BOTH the child and its audit_artifact ancestor
+            // (neither is a built-in after B11) lets creation succeed.
             assert_ne!(ancestor, RevisionLink::from_bytes([0xAB; 32]));
+            let artifact: Template =
+                serde_json::from_str(crate::schema::templates::AuditArtifact::TEMPLATE_JSON)
+                    .unwrap();
             let ok = create_object_validated_util(
                 link,
                 None,
@@ -768,9 +862,12 @@ mod tests {
                 }),
                 Method::Scalar,
                 HashType::Sha3_256,
-                &[template_tree_util(&template, None).unwrap()],
+                &[
+                    template_tree_util(&template, None).unwrap(),
+                    template_tree_util(&artifact, Some("audit_artifact")).unwrap(),
+                ],
             );
-            assert!(ok.is_ok(), "built-in ancestor must resolve: {ok:?}");
+            assert!(ok.is_ok(), "child + ancestor fixtures must resolve: {ok:?}");
         }
 
         #[tokio::test(flavor = "multi_thread")]

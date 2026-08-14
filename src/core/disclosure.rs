@@ -603,9 +603,11 @@ impl DisclosurePolicy {
 
 impl DisclosureProfile {
     /// Case study (PCA-0018 §6, **non-normative**): the agentic audit-trail
-    /// profile. Maps the eight built-in audit families (T1-T8) to their disclose
-    /// directives. The concrete template links are bound from the built-in audit
-    /// templates and **drift** as those templates evolve.
+    /// profile. Maps the eight audit-family identities (T1–T8) to their disclose
+    /// directives. The concrete template links are bound from the fixture
+    /// `TEMPLATE_LINK` constants and **drift** as those templates evolve.
+    /// Lineage resolution still needs the template bodies as linked trees
+    /// (the family is not a built-in).
     pub fn audit() -> Self {
         let link = |bytes: [u8; 32]| RevisionLink::from_bytes(bytes);
         let disclose =
@@ -1744,11 +1746,14 @@ mod tests {
 
     // ── Preset tests ──────────────────────────────────────────────────────
 
+    use crate::core::template::template_tree_util;
     use crate::primitives::HashType;
     use crate::schema::templates::{
         AttachedFile, AuditAgentResponse, AuditAgentThinking, AuditAgentToolCall, AuditApiResponse,
-        AuditHitlApproval, AuditToolResult, AuditUserPrompt, AuditUserTurnMarker, HitlDecision,
+        AuditArtifact, AuditHitlApproval, AuditToolResult, AuditUserPrompt, AuditUserTurnMarker,
+        HitlDecision,
     };
+    use crate::schema::Template;
 
     /// Build a single-revision Tree containing an `Object` with the given
     /// payload typed by template `T`.  Returns `(Tree, RevisionLink)`.
@@ -1982,10 +1987,29 @@ mod tests {
         }
     }
 
+    /// T5 plus its audit_artifact ancestor, as linked template trees.
+    fn t5_fixture_wrappers() -> Vec<AquaTreeWrapper> {
+        let artifact: Template = serde_json::from_str(AuditArtifact::TEMPLATE_JSON).unwrap();
+        let t5: Template = serde_json::from_str(AuditApiResponse::TEMPLATE_JSON).unwrap();
+        vec![
+            AquaTreeWrapper::new(
+                template_tree_util(&artifact, Some("audit_artifact")).unwrap(),
+                None,
+                None,
+            ),
+            AquaTreeWrapper::new(
+                template_tree_util(&t5, Some("audit_api_response")).unwrap(),
+                None,
+                None,
+            ),
+        ]
+    }
+
     #[test]
     fn profile_audit_discloses_safe_fields_and_revision_type() {
         let (tree, hash) = make_audit_tree(t5_payload());
-        let policy = DisclosurePolicy::with_profile(&tree, &DisclosureProfile::audit(), &[]);
+        let linked = t5_fixture_wrappers();
+        let policy = DisclosurePolicy::with_profile(&tree, &DisclosureProfile::audit(), &linked);
         let selective = export_selective_tree(&tree, &policy).unwrap();
         let disclosed = disclosed_paths_in(&selective, &hash);
 
@@ -2029,7 +2053,8 @@ mod tests {
         profile
             .known_full
             .insert(RevisionLink::from_bytes(AuditApiResponse::TEMPLATE_LINK));
-        let policy = DisclosurePolicy::with_profile(&tree, &profile, &[]);
+        let linked = t5_fixture_wrappers();
+        let policy = DisclosurePolicy::with_profile(&tree, &profile, &linked);
         let selective = export_selective_tree(&tree, &policy).unwrap();
         match selective.revisions.get(&hash) {
             Some(SelectiveRevision::Full { .. }) => {}
@@ -2092,9 +2117,10 @@ mod tests {
         let mut revisions: BTreeMap<RevisionLink, AnyRevision> = BTreeMap::new();
         revisions.insert(custom_link.clone(), AnyRevision::Template(derived));
 
-        // Lineage is re-resolved through T5 from the verified trees (not the
-        // self-declared ancestry array).
-        let chain = resolve_verified_lineage(&custom_link, &revisions, &[]).unwrap();
+        // Lineage is re-resolved through T5 from the fixture sources (not the
+        // self-declared ancestry array). T5 is not a built-in after B11.
+        let linked = t5_fixture_wrappers();
+        let chain = resolve_verified_lineage(&custom_link, &revisions, &linked).unwrap();
         assert!(chain.contains(&custom_link));
         assert!(
             chain.contains(&t5_link),
@@ -2102,7 +2128,12 @@ mod tests {
         );
 
         // Classification inherits T5's Disclose at a non-head candidate.
-        let class = classify_object(&custom_link, &DisclosureProfile::audit(), &revisions, &[]);
+        let class = classify_object(
+            &custom_link,
+            &DisclosureProfile::audit(),
+            &revisions,
+            &linked,
+        );
         assert!(
             matches!(class, ObjectClass::Disclose(_)),
             "derived template must inherit the T5 Disclose rule, got {class:?}"

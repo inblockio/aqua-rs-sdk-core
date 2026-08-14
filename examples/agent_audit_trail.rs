@@ -1,5 +1,11 @@
 //! End-to-end auditability for an AI agent, using the t1-t8 audit templates.
 //!
+//! The 11 audit identities are **registry-distributed**, not built-in. This
+//! example loads them from a sibling
+//! `aqua-template-registry/seed/audit-set-v1/definitions/` checkout, confirms
+//! they match the in-crate fixtures, and passes them as explicit template
+//! sources to `create_object_validated` and `export_tree`.
+//!
 //! This example walks through one complete turn of a generic order-processing
 //! assistant. Every step the agent takes (reading the user's prompt, thinking,
 //! calling a third-party inventory API, obtaining human approval, answering)
@@ -21,6 +27,7 @@
 
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::path::PathBuf;
 
 use aqua_rs_sdk_core::core::signature::sign_did::DIDSigner;
 use aqua_rs_sdk_core::primitives::log::LogType;
@@ -28,7 +35,7 @@ use aqua_rs_sdk_core::primitives::{merkle, HashType, Method, RevisionLink};
 use aqua_rs_sdk_core::schema::link::{Anchor, CompositionalLink};
 use aqua_rs_sdk_core::schema::template::BuiltInTemplate;
 use aqua_rs_sdk_core::schema::templates::{
-    AuditAgentResponse, AuditAgentThinking, AuditAgentToolCall, AuditHitlApproval,
+    AuditAgentResponse, AuditAgentThinking, AuditAgentToolCall, AuditArtifact, AuditHitlApproval,
     AuditRoundAnchor, AuditSessionClose, AuditToolResult, AuditUserPrompt, AuditUserTurnMarker,
 };
 // The wire-level type name below is a historical identifier retained for
@@ -74,9 +81,55 @@ impl Identity {
     }
 }
 
-/// The bare 32-byte template link of a built-in template.
-fn builtin_link<T: BuiltInTemplate>() -> RevisionLink {
-    RevisionLink::from_bytes(T::TEMPLATE_LINK)
+const AUDIT_TEMPLATE_NAMES: &[&str] = &[
+    "audit_artifact",
+    "audit_user_turn_marker",
+    "audit_user_prompt",
+    "audit_agent_thinking",
+    "audit_agent_tool_call",
+    "audit_api_response",
+    "audit_tool_result",
+    "audit_hitl_approval",
+    "audit_agent_response",
+    "audit_round_anchor",
+    "audit_session_close",
+];
+
+/// In-crate fixture JSON for a named audit template (non-vacuity check).
+fn fixture_json(name: &str) -> &'static str {
+    match name {
+        "audit_artifact" => AuditArtifact::TEMPLATE_JSON,
+        "audit_user_turn_marker" => AuditUserTurnMarker::TEMPLATE_JSON,
+        "audit_user_prompt" => AuditUserPrompt::TEMPLATE_JSON,
+        "audit_agent_thinking" => AuditAgentThinking::TEMPLATE_JSON,
+        "audit_agent_tool_call" => AuditAgentToolCall::TEMPLATE_JSON,
+        "audit_api_response" => AuditApiResponse::TEMPLATE_JSON,
+        "audit_tool_result" => AuditToolResult::TEMPLATE_JSON,
+        "audit_hitl_approval" => AuditHitlApproval::TEMPLATE_JSON,
+        "audit_agent_response" => AuditAgentResponse::TEMPLATE_JSON,
+        "audit_round_anchor" => AuditRoundAnchor::TEMPLATE_JSON,
+        "audit_session_close" => AuditSessionClose::TEMPLATE_JSON,
+        other => panic!("unknown audit template name: {other}"),
+    }
+}
+
+/// Sibling checkout of aqua-template-registry, or a clear error.
+fn registry_definitions_dir() -> Result<PathBuf, Box<dyn Error>> {
+    let candidates = [
+        PathBuf::from("../aqua-template-registry/seed/audit-set-v1/definitions"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../aqua-template-registry/seed/audit-set-v1/definitions"),
+    ];
+    for candidate in &candidates {
+        if candidate.is_dir() {
+            return Ok(candidate.clone());
+        }
+    }
+    Err("Need a sibling checkout of aqua-template-registry at \
+         ../aqua-template-registry (expected seed/audit-set-v1/definitions/). \
+         The audit family is registry-distributed; this example loads the \
+         published definitions, not the in-crate fixtures."
+        .into())
 }
 
 /// Attach role-tagged compositional links via an Anchor revision, then sign
@@ -122,8 +175,10 @@ async fn emit_artifact(
     payload: serde_json::Value,
     links: Vec<CompositionalLink>,
     signer: &Identity,
+    template_sources: &[Tree],
 ) -> Result<(Tree, RevisionLink), Box<dyn Error>> {
-    let tree = aquafier.create_object(template_link, None, payload, None)?;
+    let tree =
+        aquafier.create_object_validated(template_link, None, payload, None, template_sources)?;
     let object_hash = tree
         .get_latest_revision_link()
         .ok_or("created tree has no tip")?;
@@ -131,34 +186,37 @@ async fn emit_artifact(
     Ok((signed, object_hash))
 }
 
-/// A one-revision template tree, keyed by the template's canonical SHA3-256
-/// multihash link.
-///
-/// audit_round_anchor and audit_session_close are NOT in the SDK's built-in
-/// verification cache (this mirrors the full SDK), so a verifier can only
-/// check objects of those types if the template revision itself is made
-/// resolvable. This is the shape template authors publish and importers
-/// store; below it is handed to export_tree as a template source, which
-/// embeds it into the exported artifact.
-fn template_source(
-    name: &str,
-    template_json: &str,
-) -> Result<(RevisionLink, Tree), Box<dyn Error>> {
-    let template: Template = serde_json::from_str(template_json)?;
-    let link = template.calculate_link(HashType::Sha3_256)?;
+/// Load the 11 audit definitions from the registry seed, confirm they match
+/// the in-crate fixtures (non-vacuity), and return one-revision source trees
+/// keyed by each template's canonical SHA3-256 multihash.
+fn load_registry_sources(
+    aquafier: &Aquafier,
+) -> Result<(BTreeMap<&'static str, (RevisionLink, Tree)>, Vec<Tree>), Box<dyn Error>> {
+    let dir = registry_definitions_dir()?;
+    let mut by_name = BTreeMap::new();
+    let mut sources = Vec::new();
 
-    let mut revisions = BTreeMap::new();
-    let mut file_index = BTreeMap::new();
-    revisions.insert(link.clone(), AnyRevision::Template(template));
-    file_index.insert(link.clone(), name.to_string());
-
-    Ok((
-        link,
-        Tree {
-            revisions,
-            file_index,
-        },
-    ))
+    for name in AUDIT_TEMPLATE_NAMES {
+        let path = dir.join(format!("{name}.json"));
+        let registry_json = std::fs::read_to_string(&path)
+            .map_err(|e| format!("failed to read registry definition {}: {e}", path.display()))?;
+        let fixture = fixture_json(name);
+        if registry_json.as_bytes() != fixture.as_bytes() {
+            return Err(format!(
+                "registry definition {name} is not byte-identical with the \
+                 in-crate fixture (aqua-template-registry seed drifted from \
+                 aqua-rs-sdk-core)"
+            )
+            .into());
+        }
+        let template: Template = serde_json::from_str(&registry_json)?;
+        let tree = aquafier.template_tree(&template, Some(name))?;
+        let link = template.calculate_link(HashType::Sha3_256)?;
+        by_name.insert(*name, (link, tree.clone()));
+        sources.push(tree);
+    }
+    assert_eq!(sources.len(), 11, "expected all 11 audit definitions");
+    Ok((by_name, sources))
 }
 
 /// Verify one tree through the full pipeline; print outcome and dump error
@@ -203,8 +261,12 @@ async fn verify_tree(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let aquafier = Aquafier::new();
+    let (registry, sources) = load_registry_sources(&aquafier)?;
+    let link_of = |name: &str| registry[name].0.clone();
 
     println!("=== Agent audit trail: one verifiable turn of an order-processing assistant ===");
+    println!("Loaded 11 audit definitions from aqua-template-registry seed/audit-set-v1");
+    println!("(byte-identical with the in-crate fixtures).");
     println!();
 
     // ── Identities ─────────────────────────────────────────────────────
@@ -227,7 +289,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // pinned to one content-addressed identifier.
     let (t1_tree, t1_hash) = emit_artifact(
         &aquafier,
-        builtin_link::<AuditUserTurnMarker>(),
+        link_of("audit_user_turn_marker"),
         json!({
             "signer_did": server.did,
             "session_id": SESSION_ID,
@@ -236,6 +298,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }),
         vec![],
         &server,
+        &sources,
     )
     .await?;
     let turn_id = t1_hash.to_string();
@@ -248,7 +311,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                        please expedite it.";
     let (t2_tree, t2_hash) = emit_artifact(
         &aquafier,
-        builtin_link::<AuditUserPrompt>(),
+        link_of("audit_user_prompt"),
         json!({
             "signer_did": user.did,
             "session_id": SESSION_ID,
@@ -258,6 +321,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }),
         vec![CompositionalLink::new(t1_hash.clone(), ROLE_IN_TURN)],
         &user,
+        &sources,
     )
     .await?;
     println!("T2 user prompt (signed by the user's session key)");
@@ -266,7 +330,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // ── T3: agent thinking (agent key) ─────────────────────────────────
     let (t3_tree, t3_hash) = emit_artifact(
         &aquafier,
-        builtin_link::<AuditAgentThinking>(),
+        link_of("audit_agent_thinking"),
         json!({
             "signer_did": agent.did,
             "turn_id": turn_id,
@@ -284,6 +348,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             CompositionalLink::new(t2_hash.clone(), ROLE_PREV),
         ],
         &agent,
+        &sources,
     )
     .await?;
     println!("T3 agent thinking (reasoning trace, signed by the agent key)");
@@ -291,7 +356,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // ── T4: tool call (agent key) ──────────────────────────────────────
     let (t4_tree, t4_hash) = emit_artifact(
         &aquafier,
-        builtin_link::<AuditAgentToolCall>(),
+        link_of("audit_agent_tool_call"),
         json!({
             "signer_did": agent.did,
             "turn_id": turn_id,
@@ -306,6 +371,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             CompositionalLink::new(t3_hash.clone(), ROLE_PREV),
         ],
         &agent,
+        &sources,
     )
     .await?;
     println!("T4 tool call: inventory.order.status(order_id: ORD-1042)");
@@ -327,7 +393,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
     let (t5_tree, t5_hash) = emit_artifact(
         &aquafier,
-        builtin_link::<AuditApiResponse>(),
+        link_of("audit_api_response"),
         json!({
             "signer_did": attestor.did,
             "turn_id": turn_id,
@@ -346,6 +412,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             CompositionalLink::new(t4_hash.clone(), ROLE_GENERATED_BY),
         ],
         &attestor,
+        &sources,
     )
     .await?;
     println!("T5 attested API response (signed by the independent api attestor)");
@@ -356,7 +423,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // observation, so divergence between the two is detectable.
     let (t6_tree, t6_hash) = emit_artifact(
         &aquafier,
-        builtin_link::<AuditToolResult>(),
+        link_of("audit_tool_result"),
         json!({
             "signer_did": agent.did,
             "turn_id": turn_id,
@@ -377,6 +444,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             CompositionalLink::new(t5_hash.clone(), ROLE_USED),
         ],
         &agent,
+        &sources,
     )
     .await?;
     println!("T6 tool result (the result the agent saw, linked to the attested T5)");
@@ -388,7 +456,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                            picking). Expedite shipping for an extra fee?";
     let (t7_tree, t7_hash) = emit_artifact(
         &aquafier,
-        builtin_link::<AuditHitlApproval>(),
+        link_of("audit_hitl_approval"),
         json!({
             "signer_did": user.did,
             "turn_id": turn_id,
@@ -402,6 +470,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             CompositionalLink::new(t6_hash.clone(), ROLE_PREV),
         ],
         &user,
+        &sources,
     )
     .await?;
     println!("T7 human approval: \"approved\" (signed by the user's session key)");
@@ -412,7 +481,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                          applied; it will leave with today's priority batch.";
     let (t8_tree, t8_hash) = emit_artifact(
         &aquafier,
-        builtin_link::<AuditAgentResponse>(),
+        link_of("audit_agent_response"),
         json!({
             "signer_did": agent.did,
             "turn_id": turn_id,
@@ -427,6 +496,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             CompositionalLink::new(t6_hash.clone(), ROLE_USED),
         ],
         &agent,
+        &sources,
     )
     .await?;
     println!("T8 agent response (is_final: true, closes the turn)");
@@ -463,24 +533,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     round_anchor.validate()?;
 
-    let (round_template_link, round_template_tree) =
-        template_source("audit_round_anchor", AuditRoundAnchor::TEMPLATE_JSON)?;
     let (anchor_tree, anchor_hash) = emit_artifact(
         &aquafier,
-        round_template_link,
+        link_of("audit_round_anchor"),
         serde_json::to_value(&round_anchor)?,
         vec![CompositionalLink::new(t1_hash.clone(), ROLE_IN_TURN)],
         &server,
+        &sources,
     )
     .await?;
-    // Export it self-descriptive: the audit_round_anchor template (from the
-    // source tree above) and its audit_artifact root (from the built-in
-    // catalog) are embedded into the tree, so no verifier needs side inputs.
-    let anchor_tree = aquafier.export_tree(
-        &anchor_tree,
-        std::slice::from_ref(&round_template_tree),
-        &ExportOptions::default(),
-    )?;
     println!("Round anchor (server seals the turn)");
     println!("  merkle_root over 7 artifacts = {merkle_root}");
 
@@ -496,27 +557,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     session_close.validate()?;
 
-    let (close_template_link, close_template_tree) =
-        template_source("audit_session_close", AuditSessionClose::TEMPLATE_JSON)?;
     let (close_tree, _close_hash) = emit_artifact(
         &aquafier,
-        close_template_link,
+        link_of("audit_session_close"),
         serde_json::to_value(&session_close)?,
         vec![],
         &server,
+        &sources,
     )
     .await?;
-    let close_tree = aquafier.export_tree(
-        &close_tree,
-        std::slice::from_ref(&close_template_tree),
-        &ExportOptions::default(),
-    )?;
     println!("Session close (server seals the session, reason: user_ended)");
     println!();
 
-    // The export lint: an exported tree references no type a receiver cannot
-    // resolve. Publishers can run this in CI over everything they ship.
+    // Self-descriptive export: the family is not a built-in, so every tree
+    // carries the templates it uses (and their audit_artifact root).
+    let t1_tree = aquafier.export_tree(&t1_tree, &sources, &ExportOptions::default())?;
+    let t2_tree = aquafier.export_tree(&t2_tree, &sources, &ExportOptions::default())?;
+    let t3_tree = aquafier.export_tree(&t3_tree, &sources, &ExportOptions::default())?;
+    let t4_tree = aquafier.export_tree(&t4_tree, &sources, &ExportOptions::default())?;
+    let t5_tree = aquafier.export_tree(&t5_tree, &sources, &ExportOptions::default())?;
+    let t6_tree = aquafier.export_tree(&t6_tree, &sources, &ExportOptions::default())?;
+    let t7_tree = aquafier.export_tree(&t7_tree, &sources, &ExportOptions::default())?;
+    let t8_tree = aquafier.export_tree(&t8_tree, &sources, &ExportOptions::default())?;
+    let anchor_tree = aquafier.export_tree(&anchor_tree, &sources, &ExportOptions::default())?;
+    let close_tree = aquafier.export_tree(&close_tree, &sources, &ExportOptions::default())?;
+
     for (label, tree) in [
+        ("T1 turn marker", &t1_tree),
+        ("T2 user prompt", &t2_tree),
+        ("T3 agent thinking", &t3_tree),
+        ("T4 tool call", &t4_tree),
+        ("T5 api response", &t5_tree),
+        ("T6 tool result", &t6_tree),
+        ("T7 hitl approval", &t7_tree),
+        ("T8 agent response", &t8_tree),
         ("round anchor", &anchor_tree),
         ("session close", &close_tree),
     ] {
@@ -525,21 +599,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
             return Err(format!("{label} still references unresolvable types: {missing:?}").into());
         }
     }
-    println!("Exported self-descriptive: the round anchor and the session close");
-    println!("carry their own template revisions (audit_round_anchor and");
-    println!("audit_session_close, plus their audit_artifact root), so they verify");
-    println!("standalone with no linked trees supplied. That is the default of");
-    println!("Aquafier::export_tree; opt out per call with ExportOptions::bare().");
+    println!("Exported self-descriptive: every artifact carries the registry");
+    println!("template revisions it uses (and their audit_artifact root), so they");
+    println!("verify standalone with no linked trees supplied. That is the default");
+    println!("of Aquafier::export_tree; opt out per call with ExportOptions::bare().");
     println!();
 
     // ── Verification ───────────────────────────────────────────────────
     // Every artifact is verified independently through the full pipeline:
     // structure, hash integrity, template schema, and signatures.
-    //
-    // T1..T8 use built-in templates, so they verify self-contained. The round
-    // anchor and session close use templates OUTSIDE the built-in cache, and
-    // they too need no side inputs here: the export above embedded their
-    // template revisions, which template resolution reads before the catalog.
+    // The export above embedded the registry templates, so no side inputs.
     println!("Verifying all artifact trees (no linked trees, no side inputs):");
     let checks: Vec<(&str, &Tree, Vec<AquaTreeWrapper>)> = vec![
         ("T1 turn marker", &t1_tree, vec![]),
