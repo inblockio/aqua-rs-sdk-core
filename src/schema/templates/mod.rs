@@ -1,14 +1,18 @@
-//! Built-in template definitions shipped with aqua-rs-sdk-core.
+//! Template definitions shipped with aqua-rs-sdk-core.
 //!
-//! This is the compatible subset of the full aqua-rs-sdk template
-//! catalog: template machinery (template_meta, anchor_template,
-//! identity_base, file), the base signature templates, the t1-t8
-//! agentic audit family, and the timestamp templates retained for
-//! revision classification only (core ships no timestamping).
-//! The signature/machinery templates are byte-identical to the full
-//! SDK's copies; the audit family is the deliberately re-rooted variant
-//! (no identity_base ancestor). The template hash is the type identity
-//! and must never drift.
+//! The built-in **catalog** is the 8 contract templates: machinery
+//! (`template_meta`, `anchor_template`, `file`) and the signature family
+//! (`signature_base` plus the four concrete suites). Those are
+//! byte-identical with the full SDK.
+//!
+//! The 11 audit identities (t1–t8 plus `audit_artifact`,
+//! `audit_round_anchor`, `audit_session_close`) stay on disk as fixtures
+//! and typed payload structs. They are registry-distributed, byte-identical
+//! with the full SDK, and **not** part of the built-in catalog. Retrieve
+//! them from `aqua-template-registry` (`audit-set-v1`) and pass them as
+//! explicit template sources.
+//!
+//! The template hash is the type identity and must never drift.
 
 mod anchor_template;
 mod audit_agent_response;

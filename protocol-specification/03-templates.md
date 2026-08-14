@@ -260,8 +260,8 @@ rule fires only for third-party templates.
 
 ## 8. The shipped catalog
 
-The core profile ships 19 templates. Their identities (bare SHA3-256 digests)
-are normative:
+The core profile ships 8 machinery and signature templates. Their identities
+(bare SHA3-256 digests) are normative:
 
 | Template | Identity (bare digest) | Role |
 |---|---|---|
@@ -273,28 +273,18 @@ are normative:
 | `signature_eip191` | `0x57090c9095a2e9af36e9b6cb4574196fa973c44a210e703bd15dab2623dbd370` | EIP-191 signature revisions |
 | `signature_p256` | `0x23a2cdd4618224a67235321e2dfeffac9ab1809175549d8b5402dd5c5376d81c` | ECDSA P-256 signature revisions |
 | `signature_webauthn` | `0x2cdea1604c08b4e23f5415d8fcf885cf86d0a3e017cf4b7989c41aa99f3f2188` | WebAuthn signature revisions |
-| `audit_artifact` | `0x431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3` | abstract root of the audit family |
-| `audit_user_turn_marker` (T1) | `0x9bf38992cb2cc1230edb6539a98e6d3c889c69aa09b1764a4b91b30cb6a36990` | opens a user turn; its revision hash is the turn id |
-| `audit_user_prompt` (T2) | `0x80143d8018fa7a0fa959c115ff7bf7da0d3363192db5202f2904b4626559ecc7` | the user's prompt |
-| `audit_agent_thinking` (T3) | `0xfe1d5fd50335d5d21f3f1976baadc9eab68a0506241ed5303bb8ad0a25a407f1` | agent reasoning |
-| `audit_agent_tool_call` (T4) | `0x13d08a7ea2a0dc5f4d5a380d9dd9456ec10392bc752f152517dd227bb272592f` | a tool invocation |
-| `audit_api_response` (T5) | `0x6d1e300bbb0145cedc1a2ff19fd1ad0e0dcfcfde6a4a9b0d6ea67c7d31c4a129` | an attested API response |
-| `audit_tool_result` (T6) | `0xad46f51cfce3fd961acb2a3d9047b4c217c3da43c32addc41e8e11b84b5c4732` | a tool result |
-| `audit_hitl_approval` (T7) | `0xcd588f6994409f3088eef84d231027ba69a1d9d7193fcb1bf0d07a1716ba6560` | a human-in-the-loop decision |
-| `audit_agent_response` (T8) | `0xe36f3af11b2c6d5c94e2862e4a66db016ff8e8f5486fe72594daa7df480c5413` | the agent's response |
-| `audit_round_anchor` | `0xf174f2f669d102d3d74efb80248a08485fe2c40d18b2df5ccc7d225e794b63e7` | Merkle commitment closing a turn (§8.2) |
-| `audit_session_close` | `0x9069525103b9408f039a41454d25ed5ffc59aed9e46224cb19864f2e71e0c23b` | closes an audit session |
+
+The 11 audit-family identities are **not** part of this catalog. They are
+listed in §8.2 as the registry-distributed family; their hashes are identical
+to those of the full SDK.
 
 ### 8.1 Catalog membership
 
-Of the 19, **14 are resolvable by naming value** in a core-profile verifier's
-catalog: `file`, the four concrete signature templates, `audit_artifact`, and
-T1–T8. The remaining five (`template_meta`, `anchor_template`,
-`signature_base`, `audit_round_anchor`, `audit_session_close`) are shipped and
+Of the 8, **5 are resolvable by naming value** in a core-profile verifier's
+catalog: `file` and the four concrete signature templates. The remaining
+three (`template_meta`, `anchor_template`, `signature_base`) are shipped and
 hash-pinned but deliberately outside the resolution catalog: nothing resolves
-an object's type through them by default. Trees using `audit_round_anchor` or
-`audit_session_close` carry or link their templates like any registry template
-(§8.3, §9).
+an object's type through them by default.
 
 ### 8.2 The audit family
 
@@ -306,23 +296,29 @@ its revision hash becomes the `turn_id` that T2–T8 payloads reference;
 `merkle_root` payload field is an application-defined commitment over the
 listed `leaf_hashes` — shape-validated by schema, not recomputed by the core
 verification procedure); `audit_session_close` records the end of a session.
+These identities are the same as the full SDK's.
 
-This family is a deliberate, bounded fork of the identity-rooted audit family
-published by richer Aqua profiles: the constraint content is identical, but
-the ancestry is re-rooted at `audit_artifact` (no identity ancestor), so all
-eleven identities differ from their full-profile counterparts. A verifier
-presented with a full-profile audit hash resolves nothing and reports
-`TEMPLATE_NOT_FOUND` (§6.2).
+| Template | Identity (bare digest) | Role |
+|---|---|---|
+| `audit_artifact` | `0x431668e53b2181311ec43db30ff4d4cf738059051829a5a4f3398c22440a16f3` | abstract root of the audit family |
+| `audit_user_turn_marker` (T1) | `0x9bf38992cb2cc1230edb6539a98e6d3c889c69aa09b1764a4b91b30cb6a36990` | opens a user turn; its revision hash is the turn id |
+| `audit_user_prompt` (T2) | `0x80143d8018fa7a0fa959c115ff7bf7da0d3363192db5202f2904b4626559ecc7` | the user's prompt |
+| `audit_agent_thinking` (T3) | `0xfe1d5fd50335d5d21f3f1976baadc9eab68a0506241ed5303bb8ad0a25a407f1` | agent reasoning |
+| `audit_agent_tool_call` (T4) | `0x13d08a7ea2a0dc5f4d5a380d9dd9456ec10392bc752f152517dd227bb272592f` | a tool invocation |
+| `audit_api_response` (T5) | `0x6d1e300bbb0145cedc1a2ff19fd1ad0e0dcfcfde6a4a9b0d6ea67c7d31c4a129` | an attested API response |
+| `audit_tool_result` (T6) | `0xad46f51cfce3fd961acb2a3d9047b4c217c3da43c32addc41e8e11b84b5c4732` | a tool result |
+| `audit_hitl_approval` (T7) | `0xcd588f6994409f3088eef84d231027ba69a1d9d7193fcb1bf0d07a1716ba6560` | a human-in-the-loop decision |
+| `audit_agent_response` (T8) | `0xe36f3af11b2c6d5c94e2862e4a66db016ff8e8f5486fe72594daa7df480c5413` | the agent's response |
+| `audit_round_anchor` | `0xf174f2f669d102d3d74efb80248a08485fe2c40d18b2df5ccc7d225e794b63e7` | Merkle commitment closing a turn |
+| `audit_session_close` | `0x9069525103b9408f039a41454d25ed5ffc59aed9e46224cb19864f2e71e0c23b` | closes an audit session |
 
 ### 8.3 Distribution
 
 The sanctioned distribution channel for the audit family is the template
-registry (`aqua-template-registry`); the catalog resolvability of
-`audit_artifact` and T1–T8 (§8.1 — `audit_round_anchor` and
-`audit_session_close` are never catalog-resolved) is a transitional
-convenience, not a protocol guarantee. Producers MUST NOT rely on any verifier's catalog beyond
-the machinery templates; the interoperable way to ship a tree is
-self-descriptive export (§9) or explicit template sources.
+registry (`aqua-template-registry`, set `audit-set-v1`). None of the 11
+identities is catalog-resolved. Producers MUST NOT rely on any verifier's
+catalog beyond the machinery templates; the interoperable way to ship a
+tree is self-descriptive export (§9) or explicit template sources.
 
 ## 9. Self-descriptive artifacts
 

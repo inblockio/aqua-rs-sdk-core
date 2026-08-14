@@ -6,6 +6,23 @@ validated by JSON Schema). Templates carrying WASM verification are not
 supported by this crate (they are rejected at verification time with
 `COMPUTE_UNSUPPORTED`); author those against the full `aqua-rs-sdk`.
 
+The rules this guide walks through are stated implementation-agnostically in
+the [protocol specification](../protocol-specification/README.md) — hashing
+in [02](../protocol-specification/02-hashing-and-canonicalization.md),
+templates, derivation, and distribution in
+[03](../protocol-specification/03-templates.md). Where this guide and the
+specification disagree, the specification wins.
+
+Distribution has two sanctioned channels, both covered in section 6: embed
+templates in the trees that use them (self-descriptive export) or publish
+them through the
+[`aqua-template-registry`](https://github.com/inblockio/aqua-template-registry),
+from which consumers retrieve them hash-pinned. The agent (audit) template
+family follows the registry rule stated in the README ("Distribution:
+registry retrieval is required"): it is not part of this crate's built-in
+contract, so everything in this guide about custom templates applies to it
+too.
+
 ## 1. Concepts
 
 A template is itself a revision: a `Template` value whose canonical SHA3-256
@@ -142,17 +159,12 @@ so shipping the child without the parent is dead on arrival), and
 `SchemaViolation` with per-field errors otherwise. Resolution order is the same
 one verification uses, so creation and verification cannot disagree.
 
-Plain `create_object` stays available and unchanged for built-in types, where
-its validation is complete:
-
-```rust,ignore
-let tree = aquafier.create_object(
-    RevisionLink::from_bytes(AuditUserTurnMarker::TEMPLATE_LINK),
-    None,
-    serde_json::json!({ "field": "value" }),
-    None,
-)?;
-```
+Plain `create_object` stays available and unchanged for the built-in
+machinery and signature types, where its validation is complete. Do **not**
+use it for the agent (audit) templates: those are registry-distributed, not
+built-in (see the README's "Distribution: registry retrieval is required"),
+so their creation path is `create_object_validated` with registry-retrieved
+sources, exactly as above.
 
 Either way, payloads are validated again at verification time.
 
@@ -214,9 +226,35 @@ via `verify_aqua_tree_with_linked_trees(...)`. That works, but it is a side
 input the receiver has to be given separately, which is exactly what
 self-descriptive export removes.
 
-The two shipped-but-uncached built-ins (`audit_round_anchor`,
-`audit_session_close`) go through `export_tree`; see
-`examples/agent_audit_trail.rs` for it in action.
+See `examples/agent_audit_trail.rs` for `export_tree` covering the full
+audit family in action: it loads the 11 definitions from a sibling
+`aqua-template-registry` checkout and passes them as sources to
+`create_object_validated` and `export_tree`.
+
+### Publish through the registry
+
+Embedding covers receivers of your exported trees. For everyone else — and
+for template sets meant to be consumed independently of any one tree —
+publish through the
+[`aqua-template-registry`](https://github.com/inblockio/aqua-template-registry).
+Registration is submission of signed Aqua template trees (the
+`template_tree` shape above) under your publisher DID, verified with this
+crate before acceptance; WASM-carrying definitions are rejected, matching
+this guide's data-only scope. Consumers subscribe through the registry's
+fail-closed trust layer (publisher allow list, lockfile hash pins) and pass
+the retrieved bodies to this crate as explicit template sources:
+`create_object_validated` for creation, `export_tree`'s extra sources for
+export, and `verify_aqua_tree_with_linked_trees` /
+`verify_tree_sync_with_linked_trees` for verification.
+
+This is the **required** channel for the agent (audit) template family
+(published there as `audit-set-v1`; see the README's "Distribution: registry
+retrieval is required" and the normative statement in the protocol
+specification,
+[03 — Templates §8.3](../protocol-specification/03-templates.md#83-distribution)):
+those templates are not part of this crate's built-in contract, so treat
+them exactly like your own custom templates — retrieve, pass as sources,
+export self-descriptively.
 
 ## 7. What core will not let you do
 

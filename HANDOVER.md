@@ -5,6 +5,10 @@ projects after the extraction, essential-core, publication, trust, and
 self-descriptiveness rounds. Written for whoever continues the work, human
 or agent.
 
+Update 2026-08-14: A1–A5 landed on `feat/audit-family-harmonisation` (full
+SDK `36a8b65`); B11 done (audit family left the core catalog); A6–A8
+excluded by direction.
+
 ## What exists
 
 1. **aqua-rs-sdk-core** (github.com/inblockio/aqua-rs-sdk-core). Apache-2.0,

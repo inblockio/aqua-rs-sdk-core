@@ -24,36 +24,34 @@ the canonical ledger is `tests/audit_template_hashes.txt` (root
 migration that adopts all of it together; partial adoption would mint a third
 set of type identities.
 
-- [ ] A1. Re-root the audit family in the full SDK: `audit_artifact` becomes
+- [x] A1. Re-root the audit family in the full SDK: `audit_artifact` becomes
       a root template (drop `derives_from`/`ancestry`), the ten derived
-      templates get ancestry `[audit_artifact]`.
-- [ ] A2. Rename `audit_gusto_api_response` to `audit_api_response` (file,
+      templates get ancestry `[audit_artifact]`. (2026-08-14, full SDK
+      `36a8b65` on `feat/audit-family-harmonisation`.)
+- [x] A2. Rename `audit_gusto_api_response` to `audit_api_response` (file,
       `AuditGustoApiResponse` type and error type, name tables, disclosure
-      wiring).
-- [ ] A3. Scrub the customer-derived description examples in
+      wiring). (2026-08-14, `36a8b65`.)
+- [x] A3. Scrub the customer-derived description examples in
       `audit_agent_tool_call.json` and `audit_api_response.json` (use the
-      neutral strings core ships).
-- [ ] A4. Run `verify-templates --fix` upstream and assert the resulting
+      neutral strings core ships). (2026-08-14, `36a8b65`.)
+- [x] A4. Run `verify-templates --fix` upstream and assert the resulting
       TEMPLATE_LINKs equal core's ledger exactly. Acceptance check on the
-      core side: the compat test `audit_family_divergence_is_intentional`
-      must then FAIL (hashes equal); replace it by moving the 11 audit
-      templates back into the shared byte-identical parity lists
-      (`template_hash_constants_match`, `template_files_byte_identical`).
-- [ ] A5. Decide the identity-attested audit extension: if identity
-      lifecycle states are still wanted on audit artifacts, define extension
-      templates deriving from the re-rooted family (depth headroom exists:
-      root, parent, child fits the max-depth rule). Do not re-couple the base
-      family to `identity_base`.
-- [ ] A6. Migration policy for existing identity-rooted audit artifacts in
-      deployed systems (audit emitters, portals): dual-accept window or
-      re-emission. Until then the old hashes stay answerable through core's
-      `primitives::unsupported` lookup.
-- [ ] A7. After harmonisation, regenerate core's `primitives::unsupported`
-      lookup from the upstream catalog (decide whether the old identity-rooted
-      audit hashes stay listed for historical trees).
-- [ ] A8. Spec updates accompanying A1-A3 (template hash tables, audit-trail
-      spec sections that cite the old ancestry), per the one-concern-per-change
-      and code-with-spec discipline.
+      core side: the 11 audit files joined
+      `template_hash_constants_match` and `template_files_byte_identical`;
+      `audit_family_divergence_is_intentional` is deleted. (2026-08-14,
+      `36a8b65` + this branch.)
+- [x] A5. Decide the identity-attested audit extension: **no extension in
+      this migration.** If wanted later, derive from the re-rooted family;
+      do not recouple to `identity_base`. (2026-08-14, recorded in the plan
+      and the SDK CHANGELOG.)
+- [ ] A6. **Excluded by direction** (2026-08-14): no backward compatibility
+      / dual-accept window for identity-rooted artefacts. Old hashes fail
+      closed via `template_not_found` (or the existing unsupported lookup).
+- [ ] A7. **Excluded by direction** (2026-08-14): do not regen
+      `primitives::unsupported` to drop historical hashes.
+- [ ] A8. **Excluded by direction** (2026-08-14): no spec-only pass
+      accompanying A1–A3. Catalog-membership wording for B11 is updated on
+      the core side in this change.
 
 Note: the registry's published `seed/audit-set-v1` already carries the
 re-rooted hashes, so harmonisation does NOT require a v2 of the set.
@@ -102,8 +100,8 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
       `create_object` is untouched, and the gap it leaves is now pinned by a
       test and documented loudly in `README.md` and
       `docs/template-authoring.md` section 5. `src/core/object.rs` (6 tests).
-      The upstream half of "fix both sides" remains open and belongs with the
-      section A migration.
+      Full-SDK port is a sibling task on the same
+      `feat/audit-family-harmonisation` branch (B6 on both sides).
 - [x] B7. CI for the public repo (2026-08-07). `.github/workflows/ci.yml`:
       a `core` job (fmt for this package, build, `test --lib --bins`, doc
       tests, clippy, rustdoc, verify-templates, the example, publish dry run)
@@ -164,14 +162,12 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
       `TemplateMeta::TEMPLATE_LINK`, to `TEMPLATE_META_HEX`, and to the
       `revision_type` of all 19 shipped template JSONs; documented in
       `docs/template-authoring.md` section 3.
-      SKIPPED, per the plan's non-breaking condition: changing `merkle`'s
-      `&HashType` parameters to by-value is a source-breaking signature change
-      for every existing caller (the registry passes `&HashType` today) and
-      diverges `merkle.rs` from the full SDK's verbatim copy. An
-      `impl Borrow<HashType>` generic would accept both forms without breaking
-      callers; it was left out because it changes the shape of a hashing-path
-      function for cosmetics. Revisit alongside the A1-A8 upstream
-      harmonisation, when the two copies are being touched anyway.
+      SKIPPED (2026-08-07 and reconfirmed 2026-08-14 by the orchestrator):
+      changing `merkle`'s `&HashType` parameters to by-value is a
+      source-breaking signature change on a hashing-path primitive that is
+      otherwise a verbatim copy. Cosmetic. One-concern-per-change: do not
+      bundle it with a template-identity migration. Revisit only if a later
+      change already rewrites both `merkle.rs` copies.
 - [x] B8. Regeneration binary for `primitives::unsupported` (2026-08-07).
       `src/bin/regen_unsupported.rs`, run as
       `cargo run --bin regen-unsupported --features native`, with `--check`
@@ -185,28 +181,17 @@ re-rooted hashes, so harmonisation does NOT require a v2 of the set.
       hoc extraction. When to run it is documented in the module doc comment
       and in the binary header: every upstream template addition or removal,
       and after A1-A8.
-- [ ] B11. Registry-only distribution for the audit family (decided
-      2026-08-07; README updated first, code follow-up open). The README now
-      requires agent (audit) templates to be retrieved through
-      aqua-template-registry (`audit-set-v1`) and passed as explicit template
-      sources; built-in resolution of the audit family is documented as
-      transitional and not part of the supported contract. Code follow-up:
-      remove the 9 catalog-resolvable audit templates from the built-in
-      verification catalog (the in-crate JSON copies can stay as compat-suite
-      fixtures until A4 lands — the divergence test consumes them), decide
-      what `builtin_template_hashes()` / `shipped_template_hashes()` /
-      `shipped_templates()` return afterwards, move
-      `examples/agent_audit_trail.rs` and `docs/template-authoring.md` to the
-      registry-sourced `create_object_validated` path, and revisit the
-      `include_builtin_templates` export-default discussion once the audit
-      family is no longer built-in, and update the protocol specification's
-      catalog-membership section (03-templates.md §8.1; §8.3 already declares
-      the audit family's catalog resolvability transitional). Interop note:
-      removal changes
-      verification outcomes for bare (non-self-descriptive) audit trees —
-      they will fail closed under `template_not_found` unless sources are
-      supplied — so it must land together with the doc updates above, not
-      silently.
+- [x] B11. Registry-only distribution for the audit family (2026-08-14).
+      The 9 catalog-resolvable audit templates left `BUILTIN_TEMPLATES` /
+      `BUILTIN_TEMPLATE_NAMES`. Accessors: `builtin_template_hashes()` is
+      the 5-entry verification catalog (`file` + 4 signature suites);
+      `shipped_template_hashes()` / `shipped_templates()` are the 8
+      contract templates (catalog + `template_meta` + `anchor_template` +
+      `signature_base`). The 11 audit identities stay on disk as fixtures
+      and ledger pins, matching the registry set / full SDK. Example,
+      authoring guide, spec §8 / §8.1 / §8.2 / §8.3, and the compat suite
+      follow the registry path. Bare audit trees fail closed under
+      `template_not_found` unless sources are supplied.
 
 ## C. Pointers
 

@@ -18,9 +18,9 @@ The software is under active development and currently receives only limited sup
 
 `aqua-rs-sdk-core` is a **compatible subset** of the full
 [`aqua-rs-sdk`](https://github.com/inblockio/aqua-rs-sdk). The templates it
-shares with the full SDK are byte-identical (the audit family is a deliberate,
-test-bounded fork pending upstream harmonisation), hashes and canonicalization
-are bit-for-bit the same, and trees created and signed with this crate verify
+shares with the full SDK are byte-identical (the 8 machinery and signature
+templates, and the 11 audit identities), hashes and canonicalization are
+bit-for-bit the same, and trees created and signed with this crate verify
 in the full SDK (and vice versa). That compatibility is not aspirational: it is
 enforced by an integration test suite (`compat-tests/`) that runs both crates
 side by side.
@@ -53,6 +53,7 @@ see below).
 | Verification | the full L1-L3 pipeline (structure, hashes, schemas, signatures, cross-tree links), async and sync, governed by a configurable `VerificationPolicy` |
 | Disclosure | selective disclosure and redaction, including the `pseudonymous` preset for audit artifacts |
 | Export | `export_tree`: self-descriptive artifacts (referenced templates and their ancestry embedded by default), an explicit per-call opt-out, and the `missing_templates` lint |
+| Protocol spec | [protocol-specification/](protocol-specification/README.md): an implementation-agnostic specification of the core profile (data model, hashing and canonicalization, templates, signatures, anchors, selective disclosure, the verification procedure) |
 
 ## What is not included (conformance profile)
 
@@ -62,7 +63,7 @@ the behavior is explicit, and never silently permissive:
 | Excluded | Behavior in core |
 |---|---|
 | WASM compute execution | No shipped template carries WASM (enforced by a unit test). Any template whose chain carries a `verification` section is **rejected** with `COMPUTE_UNSUPPORTED`: core has no WASM runtime and refuses to guess. Verify such trees with the full SDK. |
-| Known full-SDK templates | Every template hash the full SDK publishes but core does not ship (timestamps, the identity family, claims, policy, registration, manifest, the identity-rooted audit variants) is in a built-in lookup; a resolution miss answers with an explicit "not supported for verification by aqua-rs-sdk-core: it depends on <module>" message, governed by the `template_not_found` policy decision. |
+| Known full-SDK templates | Every template hash the full SDK publishes but core does not ship (timestamps, the identity family, claims, policy, registration, manifest, historical identity-rooted audit variants) is in a built-in lookup; a resolution miss answers with an explicit "not supported for verification by aqua-rs-sdk-core: it depends on <module>" message, governed by the `template_not_found` policy decision. The current audit-family hashes are fixtures, not that lookup: they fail closed as ordinary unknown types unless the caller supplies sources. |
 | Timestamping | No timestamp creation, no TSA or EVM providers, and the timestamp templates are not shipped. Timestamp revisions in incoming trees are still classified (`RevisionKind::Timestamp`), and their templates answer through the unsupported lookup above: `strict()` rejects, `offline()` tolerates with a warning. The hostless full SDK reaches the same outcomes through its `timestamp_unavailable` decision, and the compat suite proves the parity. |
 | Policy engine | Not included. (The `VerificationPolicy` decision points listed above are part of the verification pipeline, not the policy engine.) |
 | Daemon / forest runtime | Not included. |
@@ -182,7 +183,9 @@ Schema validation only, no WASM state machines).
 The 11 audit templates are published as the `audit-set-v1` set of the
 companion
 [`aqua-template-registry`](https://github.com/inblockio/aqua-template-registry)
-project, and the registry is their **only sanctioned distribution channel**.
+project, and the registry is their **only sanctioned distribution channel** —
+stated normatively in the protocol specification,
+[03 — Templates, §8.3 Distribution](protocol-specification/03-templates.md#83-distribution).
 They are not part of this crate's built-in template contract. A consumer of
 the agent templates must:
 
@@ -201,17 +204,9 @@ resolves through the registry. A verifier that cannot resolve an audit
 template hash fails closed under the `template_not_found` policy decision,
 and the `missing_templates` lint names the hashes to fetch.
 
-> **Transitional note.** This release still carries in-crate copies of the
-> audit family (they back the compat suite and keep the pre-harmonisation
-> gap to the full SDK measurable), so built-in resolution of these templates
-> still succeeds today. Do not depend on it: it is not part of the supported
-> contract and its removal is tracked as backlog item B11. The machinery and
-> signature templates in the table above are unaffected — those remain
-> built-in.
-
-The full SDK currently ships an older, identity-rooted variant of the
-family; core answers those hashes through the unsupported lookup, and the
-planned upstream migration (backlog section A) reunifies the two.
+The in-crate JSON copies are **fixtures** (typed payload structs and
+`verify-templates` pins). They do not resolve as built-ins. The machinery
+and signature templates in the table above remain the built-in contract.
 
 Run the end-to-end example:
 
@@ -247,17 +242,18 @@ ancestor cannot be resolved it returns the missing hashes and embeds nothing.
 triaging an incoming tree or for publishers in CI.
 
 `include_builtin_templates` also defaults to `true`, because **"built-in" is
-a property of the receiver, not the sender**: the audit templates still
-resolve locally here (a transitional state, see above) while being
-unresolvable in the current full SDK, so a genuinely self-descriptive export
-carries them too. Set it to `false`
+a property of the receiver, not the sender**. Set it to `false`
 (`ExportOptions::non_builtin_only()`) when the receiver is known to share this
 crate's catalog and the bytes matter. The cost of the default is template JSON
-size per exported tree.
+size per exported tree. Audit templates are never built-in here, so an export
+of an audit tree always needs the registry (or fixture) sources and always
+embeds the family.
 
 The compat suite proves the round trip end to end: a core-signed T1 audit tree
-run through `export_tree` verifies in the **full SDK** with no linked trees,
-while the same tree un-exported fails there.
+created with fixture sources and run through `export_tree` verifies in the
+**full SDK** with no linked trees. A bare (un-exported) core audit tree
+verifies in the full SDK too (the hashes match and the family is still a
+full-SDK built-in) and fails in core without sources.
 
 ## Working with templates: what the API gives you
 
@@ -267,7 +263,7 @@ by hand (and getting wrong):
 | Need | API |
 |---|---|
 | Convert a wire link (`0x1620...`) to the bare 64-hex digest used by ledgers, `TEMPLATE_LINK` constants, and `..._hash` payload fields | `RevisionLink::bare_digest()`, `bare_digest_hex()` |
-| The shipped template hashes as data instead of parsing `tests/audit_template_hashes.txt` | `Aquafier::shipped_template_hashes()`, `builtin_template_hashes()`, and `core::shipped_templates()` for `(name, JSON, digest)` |
+| The contract template hashes as data instead of parsing `tests/audit_template_hashes.txt` | `Aquafier::shipped_template_hashes()` (8), `builtin_template_hashes()` (5), and `core::shipped_templates()` for `(name, JSON, digest)`. The 11 audit rows in the ledger are fixture pins, not these accessors. |
 | A fresh signing identity | `generate_ed25519() -> ([u8; 32], String)` (secret plus its `did:key`) |
 | Publish or ship a template | `Aquafier::template_tree(&template, name)` (one-revision tree, full multihash key) |
 | The `revision_type` every template JSON must declare | `primitives::TEMPLATE_META_REVISION_TYPE` |
@@ -282,7 +278,7 @@ For a custom, imported, or registry-sourced type it creates the revision
 closed if the template (or an ancestor in its `derives_from` chain) is not
 among them. For the agent (audit) templates this is the required creation
 path — with registry-retrieved sources, per the distribution requirement
-above — even while the transitional in-crate copies still resolve:
+above:
 
 ```rust,ignore
 let source = aquafier.template_tree(&my_template, Some("my_template"))?;
@@ -337,13 +333,10 @@ cargo run --features native --bin verify-templates   # template hash cascade che
 ```
 
 The suite asserts: identical template hashes and bytes for the 8 shared
-machinery and signature templates, a deliberately bounded fork for the 11
-audit templates (hashes differ, and the JSONs differ from the full SDK's
-only in ancestry linkage and description strings, enforced by
-`audit_family_divergence_is_intentional`), identical canonicalization
-output, cross-verification of signed
-trees in both directions, identical outcomes on deterministic seed fixtures,
-per-policy outcome parity for timestamped trees, and tamper rejection parity.
+machinery and signature templates **and** the 11 audit templates, identical
+canonicalization output, cross-verification of signed trees in both
+directions, identical outcomes on deterministic seed fixtures, per-policy
+outcome parity for timestamped trees, and tamper rejection parity.
 
 ## License
 
