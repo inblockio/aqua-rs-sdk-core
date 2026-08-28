@@ -118,11 +118,21 @@ pub(crate) fn build_branches(
 }
 
 /// Wall-clock Unix timestamp in seconds (for ephemeral/non-daemon mode).
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn current_time_secs() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64
+}
+
+/// Wall-clock Unix timestamp in seconds (for ephemeral/non-daemon mode).
+///
+/// `SystemTime::now()` panics on wasm32-unknown-unknown; read the host clock
+/// through JS instead (same source as `Timestamp::now()`).
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn current_time_secs() -> i64 {
+    (js_sys::Date::now() / 1000.0) as i64
 }
 
 /// Flatten all revisions from verified linked trees into JSON values.

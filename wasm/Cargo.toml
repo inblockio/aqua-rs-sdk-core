@@ -1,0 +1,32 @@
+[package]
+name = "aqua-rs-sdk-core-wasm"
+version = "0.1.1"
+edition = "2021"
+license = "Apache-2.0"
+description = "wasm-bindgen exports for aqua-rs-sdk-core (JSON-string boundary), consumed by the TypeScript wrapper in js-sdk/."
+repository = "https://github.com/inblockio/aqua-rs-sdk-core"
+# The npm package is built from wasm-pack's output, not from crates.io.
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+aqua-rs-sdk-core = { path = "..", version = "0.1.1" }
+serde_json = { version = "1.0.145", features = ["preserve_order"] }
+hex = "0.4.3"
+serde = "1.0.227"
+
+# The whole binding surface is gated on wasm32; on native this crate is an
+# empty rlib so `cargo check -p aqua-rs-sdk-core-wasm` stays meaningful.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz", "--enable-mutable-globals"]
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false

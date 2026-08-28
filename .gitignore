@@ -3,3 +3,6 @@ target/
 # missing lockfile fails all of them. Only the compat harness's lockfile is
 # untracked, because its dependency tree drifts with the private full SDK.
 compat-tests/Cargo.lock
+# wasm-pack output and the wasm member's own target dir (if built standalone).
+wasm/pkg/
+wasm/target/

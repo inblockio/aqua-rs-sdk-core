@@ -1,0 +1,7 @@
+# getrandom 0.3 (pulled in by jsonschema -> ahash) refuses to compile for
+# wasm32-unknown-unknown unless a backend is named via cfg. The matching
+# `wasm_js` feature is enabled in Cargo.toml's wasm32 target dependencies.
+# getrandom 0.2 (rand / the curve crates) is switched by its `js` feature
+# alone and needs no cfg.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]

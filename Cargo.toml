@@ -6,6 +6,7 @@
 # it is its own root package, run explicitly with:
 #     cargo test --manifest-path compat-tests/Cargo.toml
 exclude = ["compat-tests"]
+members = ["wasm"]
 
 [package]
 name = "aqua-rs-sdk-core"
@@ -57,5 +58,23 @@ base64 = "0.21"
 multibase = "0.9"
 hkdf = "0.12"
 
+# wasm32-unknown-unknown has no OS entropy or wall clock of its own. Both
+# getrandom majors are in the graph (0.2 via rand/ed25519-dalek/k256/p256,
+# 0.3 via jsonschema -> ahash) and each needs its JS backend switched on;
+# 0.3 additionally needs the `getrandom_backend="wasm_js"` cfg from
+# .cargo/config.toml. js-sys backs `Timestamp::now()` and
+# `current_time_secs()` on that target. Native builds see none of this.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+js-sys = "0.3"
+
 [dev-dependencies]
 tokio = { version = "1.0", features = ["sync", "macros", "rt", "rt-multi-thread", "time"] }
+
+# Size-first release profile for the wasm member (wasm-pack builds with
+# `--release`). Profiles are workspace-wide, so native release builds of the
+# core crate and its two bins inherit this too; they are not perf-sensitive.
+[profile.release]
+opt-level = "z"
+lto = true
