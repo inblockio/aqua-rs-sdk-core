@@ -1,16 +1,19 @@
 # CI for aqua-rs-sdk-core (backlog B7).
 #
-# Two jobs, because this repo's test suite is split by what it needs:
+# Three jobs, because this repo's test suite is split by what it needs:
 #
-#   core    everything that runs from this checkout alone. This only works
-#           because compat-tests is NOT a workspace member (see the root
-#           Cargo.toml): as a member, its path dependency on the sibling
-#           full SDK made even `cargo fmt`/`cargo metadata` fail without
-#           that sibling — which is exactly how this job was red on every
-#           run before 2026-08-07.
-#   compat  the compat-tests crate, run by manifest path. It path-depends
-#           on a SIBLING checkout of the full SDK (../aqua-rs-sdk next to
-#           this repo) and therefore has to clone it.
+#   core     everything that runs from this checkout alone. This only works
+#            because compat-tests is NOT a workspace member (see the root
+#            Cargo.toml): as a member, its path dependency on the sibling
+#            full SDK made even `cargo fmt`/`cargo metadata` fail without
+#            that sibling — which is exactly how this job was red on every
+#            run before 2026-08-07.
+#   compat   the compat-tests crate, run by manifest path. It path-depends
+#            on a SIBLING checkout of the full SDK (../aqua-rs-sdk next to
+#            this repo) and therefore has to clone it.
+#   wasm-js  the `wasm/` workspace member built with wasm-pack, then the
+#            TypeScript wrapper in `js-sdk/` (typecheck, build, vitest,
+#            example). Needs the wasm32 target, wasm-pack, Node, and pnpm.
 #
 # NOTE ON THE COMPAT JOB: it needs a checkout of inblockio/aqua-rs-sdk,
 # which is currently PRIVATE. The clone step therefore has three outcomes,
@@ -199,3 +202,72 @@ jobs:
         if: steps.sdk.outputs.available == 'true'
         working-directory: aqua-rs-sdk-core
         run: cargo test --manifest-path compat-tests/Cargo.toml
+
+  wasm-js:
+    name: wasm bindings and TypeScript wrapper
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the stable toolchain with the wasm32 target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+          rustc --version && cargo --version
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/wasm-pack
+            target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-wasm-
+
+      - name: Install wasm-pack
+        run: command -v wasm-pack || cargo install wasm-pack --locked
+
+      # The same lockfile discipline as the core job, on the wasm target. The
+      # `getrandom_backend="wasm_js"` cfg comes from .cargo/config.toml.
+      - name: Check the wasm crate against the lockfile
+        run: cargo check --locked --target wasm32-unknown-unknown -p aqua-rs-sdk-core-wasm
+
+      # Everything after `--` goes to `cargo build`, so the wasm build is
+      # also --locked. Output lands in wasm/pkg (gitignored), which js-sdk
+      # depends on as file:../wasm/pkg.
+      - name: Build the wasm package
+        run: wasm-pack build wasm --target web --release --out-dir pkg -- --locked
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: js-sdk/pnpm-lock.yaml
+
+      - name: Install the wrapper's dependencies
+        working-directory: js-sdk
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (sources and tests)
+        working-directory: js-sdk
+        run: pnpm typecheck
+
+      - name: Build
+        working-directory: js-sdk
+        run: pnpm build
+
+      # Includes the export-parity test, which parses wasm/pkg/*.d.ts: a new
+      # or renamed Rust export without a TypeScript wrapper fails here.
+      - name: Test
+        working-directory: js-sdk
+        run: pnpm test
+
+      - name: Node example against dist/
+        working-directory: js-sdk
+        run: node examples/node-example.mjs

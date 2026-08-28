@@ -4,7 +4,7 @@ A minimal, WASM-free Rust implementation of the [Aqua Protocol](https://aqua-pro
 
 *Experimental community release of Aqua Protocol v4, Apache-2.0, provided as-is; breaking changes are expected.*
 
-- No `wasm-bindgen`, no `wasmi`, no `cdylib` — a plain `rlib` with 18 runtime dependencies that builds anywhere.
+- No `wasm-bindgen`, no `wasmi`, no `cdylib` in the core crate — a plain `rlib` with 18 runtime dependencies that builds anywhere. Browser and Node bindings live in a separate workspace crate ([TypeScript / WASM bindings](#typescript--wasm-bindings)).
 - Ed25519 (`did:key`) and EIP-191 secp256k1 (`did:pkh`) signing; P-256 and WebAuthn verification.
 - Selective disclosure and redaction, including the `pseudonymous` preset for audit trails.
 - Self-descriptive exports: `export_tree` embeds every referenced template by default, so receivers verify with nothing else ([docs/exports.md](docs/exports.md)).
@@ -113,6 +113,24 @@ more permissive than the full SDK under the same verification policy. See
 [docs/conformance.md](docs/conformance.md) for the full conformance profile
 and the compatibility test suite.
 
+## TypeScript / WASM bindings
+
+The core crate itself stays a plain `rlib`; nothing changes for native
+consumers. The `wasm/` workspace member (`aqua-rs-sdk-core-wasm`,
+`crate-type = ["cdylib", "rlib"]`, not published to crates.io) wraps the
+public API with `wasm-bindgen`, and `js-sdk/` (`aqua-core-js`) is the typed
+TypeScript layer over it: the same hashes and verification outcomes in Node
+and browsers, external signing through wallets or WebCrypto, and the
+registry-template and disclosure workflows.
+
+```
+wasm-pack build wasm --target web --release --out-dir pkg
+cd js-sdk && pnpm install && pnpm build && pnpm test
+```
+
+See [wasm/README.md](wasm/README.md) for the boundary conventions and
+[js-sdk/README.md](js-sdk/README.md) for the wrapper's quick start and API.
+
 ## Links
 
 - [Protocol specification](protocol-specification/README.md) — implementation-agnostic spec of the core profile.
@@ -120,6 +138,7 @@ and the compatibility test suite.
 - [Template API and registry workflow](docs/template-api.md)
 - [Conformance profile and compat testing](docs/conformance.md)
 - [Self-descriptive exports](docs/exports.md)
+- [TypeScript wrapper](js-sdk/README.md) · [wasm bindings crate](wasm/README.md)
 - [`aqua-template-registry`](https://github.com/inblockio/aqua-template-registry)
 - [`aqua-rs-sdk`](https://github.com/inblockio/aqua-rs-sdk) — the full SDK.
 - [CHANGELOG](CHANGELOG.md) · [RELEASE.md](RELEASE.md)
