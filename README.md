@@ -4,6 +4,8 @@ A minimal implementation of the [Aqua Protocol](https://aqua-protocol.org) core 
 
 *Experimental community release of Aqua Protocol v4, Apache-2.0, provided as-is; breaking changes are expected.*
 
+> **This repository is a public snapshot, and it lags `aqua-rs-sdk` main.** It is published so others can inspect the work; it is not the reference implementation and it is not kept in step with it. Since this snapshot was taken, main has changed the wire format (among other things: structural links as `{"hash": ...}` records, the signature canonical form and the signature template ids, and genesis selection). The compatibility statements below therefore describe the snapshot at publication, not current main. Do not evaluate conformance against this repository. It will be re-published from main; see [#1](https://github.com/inblockio/aqua-rs-sdk-core/issues/1).
+
 - One engine everywhere: the TypeScript SDK (`aqua-core-js`) runs the Rust core compiled to WebAssembly, so hashes and verification outcomes are identical in Node, browsers, and native Rust.
 - Ed25519 (`did:key`) and EIP-191 secp256k1 (`did:pkh`) signing; P-256 and WebAuthn verification. External signers keep keys out of the SDK: WebCrypto, or any EIP-1193 wallet such as MetaMask.
 - Selective disclosure and redaction, including the `pseudonymous` preset for audit trails.
