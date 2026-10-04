@@ -2,7 +2,7 @@
 
 Date: 2026-08-07. Pipeline: process-pipeline, list mode. Approval: Tim
 ("B and R executions with subagents after handover"). Out of scope by
-direction: A1-A8 (upstream SDK, backlog-tracked only, see HANDOVER.md) and
+direction: A1-A8 (upstream SDK, backlog-tracked only, see [HANDOVER.md (archived)](https://github.com/inblockio/aqua-rs-sdk-core/blob/eed9275b2d712e3a78db00d49a3cd58e3849216c/HANDOVER.md)) and
 B5 (spec-gated wire-format change, stays tracked).
 
 ## Scope and design constraints per item

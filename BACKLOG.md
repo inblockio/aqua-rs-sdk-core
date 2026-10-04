@@ -13,7 +13,7 @@ date until the section is fully cleared, then archive them at the bottom).
 TRACKING NOTE (2026-08-07): these SDK changes stay in this backlog by
 direction and are NOT executed from the core side; they are one atomic
 migration inside the full aqua-rs-sdk, owned by that repo's maintainers.
-See HANDOVER.md.
+See [HANDOVER.md (archived)](https://github.com/inblockio/aqua-rs-sdk-core/blob/eed9275b2d712e3a78db00d49a3cd58e3849216c/HANDOVER.md).
 
 Context: on 2026-08-07 core deliberately forked the audit template family
 (re-rooted at `audit_artifact`, `identity_base` removed from ancestry,
